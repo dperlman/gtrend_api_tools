@@ -118,34 +118,31 @@ class GranularityManager:
 
         if granularity == 'm':
             _print_if_verbose(f"Hours difference: {hour_diff}", self.verbose)
-            datetime_index = pd.date_range(start=start_dt, freq='min', periods=hour_diff + 1)
-            period_index = pd.period_range(start=start_dt, freq='min', periods=hour_diff + 1)   
+            period_index = pd.period_range(start=start_dt, end=end_dt, freq='min')
         elif granularity == 'e':
             _print_if_verbose(f"Hours difference: {hour_diff}", self.verbose)
-            datetime_index = pd.date_range(start=start_dt, freq='8min', periods=hour_diff + 1)
-            period_index = pd.period_range(start=start_dt, freq='8min', periods=hour_diff + 1)
+            period_index = pd.period_range(start=start_dt, end=end_dt, freq='8min')
         elif granularity == 'n':
             _print_if_verbose(f"Hours difference: {hour_diff}", self.verbose)
-            datetime_index = pd.date_range(start=start_dt, freq='16min', periods=hour_diff + 1)
-            period_index = pd.period_range(start=start_dt, freq='16min', periods=hour_diff + 1)
+            period_index = pd.period_range(start=start_dt, end=end_dt, freq='16min')
         elif granularity == 'h':
             _print_if_verbose(f"Hours difference: {hour_diff}", self.verbose)
-            datetime_index = pd.date_range(start=start_dt, freq='h', periods=math.floor(hour_diff + 1))
-            period_index = pd.period_range(start=start_dt, freq='h', periods=math.floor(hour_diff + 1))
+            period_index = pd.period_range(start=start_dt, end=end_dt, freq='h')
         elif granularity == 'D':
             _print_if_verbose(f"Days difference: {days_diff}", self.verbose)
-            datetime_index = pd.date_range(start=start_dt, freq='D', periods=math.floor(days_diff + 1))
-            period_index = pd.period_range(start=start_dt, freq='D', periods=math.floor(days_diff + 1))
+            period_index = pd.period_range(start=start_dt, end=end_dt, freq='D')
         elif granularity == 'W':
             _print_if_verbose(f"Weeks difference: {weeks_diff}", self.verbose)
-            datetime_index = pd.date_range(start=start_dt, freq='W', periods=math.floor(weeks_diff + 1))
-            period_index = pd.period_range(start=start_dt, freq='W', periods=math.floor(weeks_diff + 1))
+            period_index = pd.period_range(start=start_dt, end=end_dt, freq='W')
         elif granularity == 'M':
             _print_if_verbose(f"Months difference: {months_diff}", self.verbose)
-            datetime_index = pd.date_range(start=start_dt.replace(day=1), freq='MS', periods=math.floor(months_diff + 1))
-            period_index = pd.period_range(start=start_dt.replace(day=1), freq='M', periods=math.floor(months_diff + 1))
+            period_index = pd.period_range(start=start_dt.replace(day=1), end=end_dt, freq='M')
         else:
             raise ValueError(f"Invalid granularity: {granularity}. Must be one of: {list(self.rules.keys())}")
+        
+        # make the datetime index from the period index, doing it this way
+        # gives us something that matches how Google Trends does it
+        datetime_index = period_index.to_timestamp()
         
         _print_if_verbose(f"Datetime index length: {len(datetime_index)}", self.verbose)
         _print_if_verbose(f"Period index length: {len(period_index)}", self.verbose)
@@ -233,6 +230,12 @@ class GranularityManager:
         
         # Determine granularity based on rules in order
         for code, rule in self.rules.items():
+            # Check if we are on the last one, with no limit on max_hours
+            if rule['max_hours'] == float('inf'):
+                granularity = code
+                max_units = float('inf')
+                _print_if_verbose(f"Selected granularity {code} (no limit on max_hours)", self.verbose)
+                break
             # Create timedelta object based on max_hours
             max_timedelta = timedelta(hours=rule['max_hours'])
             max_days_info = f", max_days: {rule.get('max_days')}" if 'max_days' in rule else ""

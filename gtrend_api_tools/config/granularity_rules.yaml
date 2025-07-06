@@ -53,7 +53,7 @@ granularity_rules:
     max_days: .inf
     max_inclusive: True
     allows_hours: False
-    max_records: inf
+    max_records: .inf
     record_seconds: 2419200 # minimum, 28 days. Maximum is 2678400, 31 days.
 
 
