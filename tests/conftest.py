@@ -2,19 +2,14 @@
 Main test configuration and fixture exports for gtrend_api_tools.
 """
 import os
-import sys
 import pytest
-import yaml
 from datetime import datetime, timedelta
-
-# Add the project root directory to the Python path
-project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, project_root)
 
 # Import and re-export fixtures from submodules
 from .fixtures.api_fixtures import API_TO_TEST, VERBOSE, api_key, api_instance
 from .fixtures.data_fixtures import test_terms, test_dates
 from .fixtures.config_fixtures import test_config, available_apis
+from .fixtures.granularity_fixtures import granularity_api_1, granularity_api_2, api_instances_for_comparison
 
 # Test configuration
 API_TO_TEST = 'dummy_api'  # Specify which API to test
@@ -45,9 +40,8 @@ def test_config():
 @pytest.fixture(scope="module")
 def available_apis():
     """Load available APIs configuration."""
-    available_apis_path = os.path.join(project_root, 'gtrend_api_tools', 'config', 'available_apis.yaml')
-    with open(available_apis_path, 'r') as f:
-        return yaml.safe_load(f)
+    from gtrend_api_tools.APIs.api_utils import load_api_config
+    return load_api_config()
 
 @pytest.fixture(scope="module")
 def api_key(test_config, request, available_apis):
@@ -113,5 +107,8 @@ __all__ = [
     'test_terms',
     'test_dates',
     'test_config',
-    'available_apis'
+    'available_apis',
+    'granularity_api_1',
+    'granularity_api_2',
+    'api_instances_for_comparison'
 ] 

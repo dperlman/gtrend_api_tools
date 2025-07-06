@@ -8,7 +8,8 @@ import unicodedata
 import re
 from types import SimpleNamespace
 from dateutil.parser import parse, ParserError
-from gtrend_api_tools.utils import load_config, _print_if_verbose, get_index_granularity
+from gtrend_api_tools.utils import load_config, _print_if_verbose
+from gtrend_api_tools.granularity import GranularityManager
 import numpy as np
 
 def load_api_config() -> Dict[str, Any]:
@@ -409,10 +410,12 @@ def standard_dict_to_df(standardized_data: List[Dict[str, Any]]) -> pd.DataFrame
     df = pd.DataFrame(data_dict)
     
     # Convert index to datetime if it's not already
+    print(df.index)
     df.index = pd.to_datetime(df.index)
     
-    # Get the frequency using the utility function
-    freq = get_index_granularity(df.index)
+    # Get the frequency using GranularityManager
+    granularity_manager = GranularityManager() # will load config automatically
+    freq = granularity_manager.get_index_granularity(df.index)
     
     # Set the frequency on the index
     df.index.freq = freq

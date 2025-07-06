@@ -3,7 +3,7 @@ import requests
 from datetime import datetime, timedelta
 from typing import Union, List, Optional, Dict, Any
 from gtrend_api_tools.APIs.api_utils import change_tor_identity
-from gtrend_api_tools.APIs.date_ranges import DateRange
+from gtrend_api_tools.search_specs import DateRange
 from gtrend_api_tools.APIs.base_classes import API_Call
 import pandas as pd
 
@@ -63,32 +63,25 @@ class TrendsPy(API_Call):
             self.print_func("Note: If using Tor Browser, make sure it's running and the SOCKS proxy is enabled")
             raise ValueError(f"Failed to connect to proxy {self.proxy}: {str(e)}")
 
-    def search(
-        self,
-        search_term: Union[str, List[str]],
-        start_date: Optional[Union[str, datetime]] = None,
-        end_date: Optional[Union[str, datetime]] = None
-    ) -> 'TrendsPy':
+    def search(self, **kwargs) -> 'TrendsPy':
         """
         Search Google Trends using the TrendsPy library.
         
         Args:
-            search_term (Union[str, List[str]]): The search term(s) to look up in Google Trends
-            start_date (Optional[Union[str, datetime]]): Start date for the search
-            end_date (Optional[Union[str, datetime]]): End date for the search
+            **kwargs: Arguments passed to the parent class search method
             
         Returns:
             TrendsPy: Returns self for method chaining
         """
         # Call base class search method first to handle terms and dates
-        super().search(search_term, start_date, end_date)
+        super().search(**kwargs)
         # Get the processed search spec for dates
         spec = self.search_spec
         
         self.print_func(f"Sending TrendsPy search request:")
-        self.print_func(f"  Search term: {search_term}")
-        self.print_func(f"  Start date: {start_date if start_date else 'default'}")
-        self.print_func(f"  End date: {end_date if end_date else 'default'}")
+        self.print_func(f"  Search term: {spec.term_string}")
+        self.print_func(f"  Start date: {spec.start_date}")
+        self.print_func(f"  End date: {spec.end_date}")
         self.print_func(f"  Proxy: {self.proxy or 'None'}")
         self.print_func(f"  Change identity: {self.change_identity}")
         
@@ -100,10 +93,9 @@ class TrendsPy(API_Call):
                 'gprop': self.gprop if self.gprop is not None else ''  # trendspy expects empty string as default
             }
             # Parse time range if provided
-            if start_date or end_date:
-                time_range = DateRange.from_dt((start_date, end_date))
-                params['timeframe'] = time_range.formatted_range_ymd
-                self.print_func(f"  Time range: {time_range.formatted_range_ymd}")
+            if spec.start_date or spec.end_date:
+                params['timeframe'] = spec.formatted_range_ymd
+                self.print_func(f"  Time range: {spec.formatted_range_ymd}")
             else:
                 self.print_func("  Time range: default")
             
@@ -112,7 +104,7 @@ class TrendsPy(API_Call):
                 self.print_func("  Changing Tor identity")
                 change_tor_identity(self.tor_control_password, self.print_func)
             
-            self.raw_data = self.trends.interest_over_time(search_term, return_raw=True, **params) # we want raw dicts because we will clean and standardize them all later
+            self.raw_data = self.trends.interest_over_time(spec.term_string, return_raw=True, **params) # we want raw dicts because we will clean and standardize them all later
             
             # Check if there's an error in the results
             if isinstance(self.raw_data, dict) and "error" in self.raw_data:
@@ -162,31 +154,22 @@ class TrendsPy(API_Call):
             
         return self
 
-def search_trendspy(
-    search_term: Union[str, List[str]],
-    start_date: Optional[Union[str, datetime]] = None,
-    end_date: Optional[Union[str, datetime]] = None,
-    proxy: Optional[str] = None,
-    change_identity: bool = True,
-    request_delay: int = 4,
-    tor_control_password: Optional[str] = None,
-    **kwargs
-) -> Union[pd.DataFrame, Dict[str, Any]]:
-    """
-    Search Google Trends using the trendspy library.
+# def search_trendspy(**kwargs) -> Union[pd.DataFrame, Dict[str, Any]]:
+#     """
+#     Search Google Trends using the trendspy library.
     
-    Args:
-        search_term (Union[str, List[str]]): The search term(s) to look up in Google Trends
-        start_date (Optional[Union[str, datetime]]): Start date for the search
-        end_date (Optional[Union[str, datetime]]): End date for the search
-        proxy (Optional[str]): The proxy to use. If None, will use proxy from config.yaml if available
-        change_identity (bool): Whether to change Tor identity between iterations. Only used if proxy is provided
-        request_delay (int): Delay between requests in seconds
-        tor_control_password (Optional[str]): Password for Tor control port. Required if change_identity is True
-        **kwargs: Additional keyword arguments passed to API_Call
+#     Args:
+#         search_term (Union[str, List[str]]): The search term(s) to look up in Google Trends
+#         start_date (Optional[Union[str, datetime]]): Start date for the search
+#         end_date (Optional[Union[str, datetime]]): End date for the search
+#         proxy (Optional[str]): The proxy to use. If None, will use proxy from config.yaml if available
+#         change_identity (bool): Whether to change Tor identity between iterations. Only used if proxy is provided
+#         request_delay (int): Delay between requests in seconds
+#         tor_control_password (Optional[str]): Password for Tor control port. Required if change_identity is True
+#         **kwargs: Additional keyword arguments passed to API_Call
         
-    Returns:
-        Union[pd.DataFrame, Dict[str, Any]]: Standardized search results
-    """
-    trends = TrendsPy(**locals())
-    return trends.search(search_term, start_date, end_date).standardize_data().data
+#     Returns:
+#         Union[pd.DataFrame, Dict[str, Any]]: Standardized search results
+#     """
+#     trends = TrendsPy(**locals())
+#     return trends.search(**kwargs).standardize_data().data

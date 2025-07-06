@@ -1,8 +1,8 @@
 from typing import Dict, Union, Optional, Any, Tuple
-from datetime import datetime
+from datetime import datetime, timedelta
 import pandas as pd
 import numpy as np
-from .utils import load_config, _print_if_verbose, diff_hour, diff_day, diff_week, diff_month
+from gtrend_api_tools.utils import load_config, _print_if_verbose, parse_date_str, diff_hour, diff_day, diff_week, diff_month
 import math
 
 class GranularityManager:
@@ -19,20 +19,25 @@ class GranularityManager:
     The rules are sorted by max_days in ascending order, with rules having
     max_days=None placed at the end.
     """
-    def __init__(self, config: dict, verbose: bool = True):
+    def __init__(self, config: Optional[dict] = None, verbose: bool = True):
         """
         Initialize granularity manager.
         
         Args:
-            config (dict): Configuration dictionary containing granularity rules
-            verbose (bool): Whether to print debug information. Defaults to False.
+            config (Optional[dict]): Configuration dictionary containing granularity rules. 
+                                   If None, will load config automatically.
+            verbose (bool): Whether to print debug information. Defaults to True.
         """
+        if config is None:
+            config = load_config()
+        
         if not isinstance(config, dict):
             raise ValueError("config must be a dictionary")
         self.rules = config.get('granularity_rules', {})
         if not self.rules:
             raise ValueError("No granularity rules found in config")
         self.verbose = verbose
+        self.verbose = True
 
     def get_index_granularity(self, index: Union[pd.DatetimeIndex, pd.PeriodIndex]) -> str:
         """
@@ -105,27 +110,42 @@ class GranularityManager:
         """
         if granularity not in self.rules:
             raise ValueError(f"Invalid granularity: {granularity}. Must be one of: {list(self.rules.keys())}")
-            
-        if granularity == 'h':
-            hour_diff = diff_hour(start_dt, end_dt)
+        
+        hour_diff = diff_hour(start_dt, end_dt)
+        days_diff = diff_day(start_dt, end_dt)
+        weeks_diff = diff_week(start_dt, end_dt)
+        months_diff = diff_month(start_dt, end_dt)
+
+        if granularity == 'm':
             _print_if_verbose(f"Hours difference: {hour_diff}", self.verbose)
-            datetime_index = pd.date_range(start=start_dt, freq=granularity, periods=hour_diff + 1)
-            period_index = pd.PeriodIndex(datetime_index)
+            datetime_index = pd.date_range(start=start_dt, freq='min', periods=hour_diff + 1)
+            period_index = pd.period_range(start=start_dt, freq='min', periods=hour_diff + 1)   
+        elif granularity == 'e':
+            _print_if_verbose(f"Hours difference: {hour_diff}", self.verbose)
+            datetime_index = pd.date_range(start=start_dt, freq='8min', periods=hour_diff + 1)
+            period_index = pd.period_range(start=start_dt, freq='8min', periods=hour_diff + 1)
+        elif granularity == 'n':
+            _print_if_verbose(f"Hours difference: {hour_diff}", self.verbose)
+            datetime_index = pd.date_range(start=start_dt, freq='16min', periods=hour_diff + 1)
+            period_index = pd.period_range(start=start_dt, freq='16min', periods=hour_diff + 1)
+        elif granularity == 'h':
+            _print_if_verbose(f"Hours difference: {hour_diff}", self.verbose)
+            datetime_index = pd.date_range(start=start_dt, freq='h', periods=math.floor(hour_diff + 1))
+            period_index = pd.period_range(start=start_dt, freq='h', periods=math.floor(hour_diff + 1))
         elif granularity == 'D':
-            days_diff = diff_day(start_dt, end_dt)
             _print_if_verbose(f"Days difference: {days_diff}", self.verbose)
-            datetime_index = pd.date_range(start=start_dt, freq=granularity, periods=days_diff + 1)
-            period_index = pd.PeriodIndex(datetime_index)
+            datetime_index = pd.date_range(start=start_dt, freq='D', periods=math.floor(days_diff + 1))
+            period_index = pd.period_range(start=start_dt, freq='D', periods=math.floor(days_diff + 1))
         elif granularity == 'W':
-            weeks_diff = diff_week(start_dt, end_dt)
             _print_if_verbose(f"Weeks difference: {weeks_diff}", self.verbose)
-            datetime_index = pd.date_range(start=start_dt, freq=granularity, periods=weeks_diff + 1)
-            period_index = pd.PeriodIndex(datetime_index)
+            datetime_index = pd.date_range(start=start_dt, freq='W', periods=math.floor(weeks_diff + 1))
+            period_index = pd.period_range(start=start_dt, freq='W', periods=math.floor(weeks_diff + 1))
         elif granularity == 'M':
-            months_diff = diff_month(start_dt, end_dt)
             _print_if_verbose(f"Months difference: {months_diff}", self.verbose)
-            datetime_index = pd.date_range(start=start_dt.replace(day=1), freq='MS', periods=months_diff + 1)
-            period_index = pd.PeriodIndex(datetime_index, freq='M')
+            datetime_index = pd.date_range(start=start_dt.replace(day=1), freq='MS', periods=math.floor(months_diff + 1))
+            period_index = pd.period_range(start=start_dt.replace(day=1), freq='M', periods=math.floor(months_diff + 1))
+        else:
+            raise ValueError(f"Invalid granularity: {granularity}. Must be one of: {list(self.rules.keys())}")
         
         _print_if_verbose(f"Datetime index length: {len(datetime_index)}", self.verbose)
         _print_if_verbose(f"Period index length: {len(period_index)}", self.verbose)
@@ -169,8 +189,7 @@ class GranularityManager:
     def calculate_search_granularity(
         self,
         start_date: Union[str, datetime],
-        end_date: Union[str, datetime],
-        granularity: Optional[str] = None
+        end_date: Union[str, datetime]
     ) -> Dict[str, Union[str, pd.DatetimeIndex, pd.PeriodIndex, int]]:
         """
         Calculate the appropriate granularity for a Google Trends search based on the time range
@@ -182,10 +201,8 @@ class GranularityManager:
         we don't use this because it's not documented and it's not clear if it's reliable. We had to draw the line somewhere.
         
         Args:
-            start_date (Union[str, datetime]): Start date of the search
-            end_date (Union[str, datetime]): End date of the search
-            granularity (Optional[str]): If provided, use this as the granularity instead of calculating it.
-                Should be one of: 'h' (hourly), 'D' (daily), 'W' (weekly), 'M' (month start)
+            start_date_dt (datetime): Start date of the search
+            end_date_dt (datetime): End date of the search
             
         Returns:
             Dict[str, Union[str, pd.DatetimeIndex, pd.PeriodIndex, int]]: Dictionary containing:
@@ -193,73 +210,47 @@ class GranularityManager:
                 - "datetime_index": A pandas DateTimeIndex with the appropriate frequency
                 - "period_index": A pandas PeriodIndex with the appropriate frequency
                 - "max_units": The maximum number of units possible for the calculated granularity
-                - "blocks": Number of intervals needed to cover the full date range (1 if granularity not provided)
         """
-        # Convert dates to datetime if they're strings
-        if isinstance(start_date, str):
-            start_dt = datetime.strptime(start_date, "%Y-%m-%d")
-            _print_if_verbose(f"Converted start_date string to datetime: {start_dt}", self.verbose)
+        # Convert strings to datetimes if necessary, using the CURRENT_DEFAULT_DT as the default (from utils.py)
+        
+        if isinstance(start_date, str): 
+            start_dt = parse_date_str(start_date)
         else:
             start_dt = start_date
-            
         if isinstance(end_date, str):
-            end_dt = datetime.strptime(end_date, "%Y-%m-%d")
-            _print_if_verbose(f"Converted end_date string to datetime: {end_dt}", self.verbose)
+            end_dt = parse_date_str(end_date)
         else:
             end_dt = end_date
         
         # Truncate any HH:MM:SS
-        start_dt = start_dt.replace(hour=0, minute=0, second=0, microsecond=0)
-        end_dt = end_dt.replace(hour=0, minute=0, second=0, microsecond=0)
-        _print_if_verbose(f"Truncated dates to midnight: {start_dt} to {end_dt}", self.verbose)
+        # start_dt = start_dt.replace(hour=0, minute=0, second=0, microsecond=0)
+        # end_dt = end_dt.replace(hour=0, minute=0, second=0, microsecond=0)
+        # _print_if_verbose(f"Truncated dates to midnight: {start_dt} to {end_dt}", self.verbose)
         
-        # Calculate total units in the date range
-        if granularity is not None:
-            granularity = granularity[0]  # Get first letter
-            _print_if_verbose(f"Using provided granularity: {granularity}", self.verbose)
+        # Calculate the time range
+        time_diff = end_dt - start_dt
+        _print_if_verbose(f"Time difference: {time_diff}", self.verbose)
+        
+        # Determine granularity based on rules in order
+        for code, rule in self.rules.items():
+            # Create timedelta object based on max_hours
+            max_timedelta = timedelta(hours=rule['max_hours'])
+            max_days_info = f", max_days: {rule.get('max_days')}" if 'max_days' in rule else ""
+            _print_if_verbose(f"Rule {code} has max_hours: {rule['max_hours']}{max_days_info} -> timedelta: {max_timedelta}", self.verbose)
             
-            # Get max_units for the provided granularity
-            if granularity not in self.rules:
-                raise ValueError(f"Invalid granularity: {granularity}. Must be one of: {list(self.rules.keys())}")
-                
-            max_units = self.rules[granularity]['max_records']
-            _print_if_verbose(f"Maximum units for {granularity}: {max_units}", self.verbose)
-            
-            # Calculate total units based on the granularity
-            total_units_result = self.calculate_total_units(start_dt, end_dt, granularity)
-            total_units = total_units_result['num_periods']
-            _print_if_verbose(f"Total units needed: {total_units}", self.verbose)
-                
-            # Calculate number of blocks needed, rounding up
-            blocks = math.ceil(total_units / max_units)
-            _print_if_verbose(f"Number of blocks needed: {blocks}", self.verbose)
-        else:
-            # Calculate the time range in days
-            days_diff = (end_dt - start_dt).days
-            _print_if_verbose(f"Days between dates: {days_diff}", self.verbose)
-            
-            # Determine granularity based on rules in order
-            for code, rule in self.rules.items():
-                if 'max_days' in rule and rule['max_days'] is not None:
-                    if rule['max_inclusive']:
-                        if days_diff <= rule['max_days']:
-                            granularity = code
-                            max_units = rule['max_records']
-                            _print_if_verbose(f"Selected granularity {code} (inclusive rule, days_diff={days_diff} <= max_days={rule['max_days']})", self.verbose)
-                            break
-                    else:
-                        if days_diff < rule['max_days']:
-                            granularity = code
-                            max_units = rule['max_records']
-                            _print_if_verbose(f"Selected granularity {code} (exclusive rule, days_diff={days_diff} < max_days={rule['max_days']})", self.verbose)
-                            break
-                else:
-                    # Last rule (monthly) has no max_days
+            # Apply the max_inclusive logic
+            if rule['max_inclusive']:
+                if time_diff <= max_timedelta:
                     granularity = code
-                    max_units = float('inf')  # No limit for monthly
-                    _print_if_verbose(f"Selected granularity {code} (fallback rule with no max_days)", self.verbose)
+                    max_units = rule['max_records']
+                    _print_if_verbose(f"Selected granularity {code} (inclusive rule, time_diff={time_diff} <= max_timedelta={max_timedelta})", self.verbose)
                     break
-            blocks = 1  # Single block when granularity is calculated automatically
+            else:
+                if time_diff < max_timedelta:
+                    granularity = code
+                    max_units = rule['max_records']
+                    _print_if_verbose(f"Selected granularity {code} (exclusive rule, time_diff={time_diff} < max_timedelta={max_timedelta})", self.verbose)
+                    break
         
         # Create appropriate DateTimeIndex and PeriodIndex based on granularity
         datetime_index, period_index = self.create_time_indices(start_dt, end_dt, granularity)
@@ -268,8 +259,7 @@ class GranularityManager:
             "granularity": granularity,
             "datetime_index": datetime_index,
             "period_index": period_index,
-            "max_units": max_units,
-            "blocks": blocks
+            "max_units": max_units
         }
     
     def get_max_period_by_granularity(

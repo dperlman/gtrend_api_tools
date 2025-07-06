@@ -10,7 +10,7 @@ from bs4 import BeautifulSoup
 from gtrend_api_tools.APIs.base_classes import API_Call
 import pandas as pd
 from gtrend_api_tools.utils import _print_if_verbose
-from gtrend_api_tools.APIs.date_ranges import DateRange
+from gtrend_api_tools.search_specs import DateRange
 import json
 import unicodedata
 
@@ -452,28 +452,21 @@ class ApplescriptSafari(API_Call):
         except Exception as e:
             self.print_func(f"Error executing AppleScript to close tab: {str(e)}")
 
-    def search(
-        self,
-        search_term: Union[str, List[str]],
-        start_date: Optional[Union[str, datetime]] = None,
-        end_date: Optional[Union[str, datetime]] = None
-    ) -> 'ApplescriptSafari':
+    def search(self, **kwargs) -> 'ApplescriptSafari':
         """
-        Search Google Trends using Safari and AppleScript.
+        Search Google Trends using AppleScript and Safari.
         
         Args:
-            search_term (Union[str, List[str]]): The search term(s) to look up in Google Trends
-            start_date (Optional[Union[str, datetime]]): Start date for the search
-            end_date (Optional[Union[str, datetime]]): End date for the search
+            **kwargs: Arguments passed to the parent class search method
             
         Returns:
             ApplescriptSafari: Returns self for method chaining
         """
         # Call base class search method first to handle terms and dates
-        super().search(search_term, start_date, end_date)
+        super().search(**kwargs)
         # Get the processed search spec for dates
         spec = self.search_spec
-
+        
         # Create auth session if it doesn't exist
         if self._auth_session is None:
             self.print_func("Creating new GoogleAuthSession")
@@ -494,26 +487,25 @@ class ApplescriptSafari(API_Call):
             self._close_safari_tab()
             
         self.print_func(f"Sending ApplescriptSafari search request:")
-        self.print_func(f"  Search term: {search_term}")
-        self.print_func(f"  Start date: {start_date if start_date else 'default'}")
-        self.print_func(f"  End date: {end_date if end_date else 'default'}")
+        self.print_func(f"  Search term: {spec.term_string}")
+        self.print_func(f"  Start date: {spec.start_date}")
+        self.print_func(f"  End date: {spec.end_date}")
         
         # Construct the URL
         config = CONFIRM_CONFIGS['google_trends']
         url_template = config['url']
         
         # Join search terms with commas and URL encode
-        query = quote(",".join(search_term if isinstance(search_term, list) else [search_term]))
+        query = quote(",".join(spec.terms))
         self.print_func(f"Query: {query}")
         
         # Parse time range if provided
-        dr = DateRange(start_date, end_date)
         params = {
-            'date_range': dr.formatted_range_ymd,
+            'date_range': spec.formatted_range_ymd,
             'geo': self.geo,
             'query': query
         }
-        self.print_func(f"  Time range: {dr.formatted_range_ymd}")
+        self.print_func(f"  Time range: {spec.formatted_range_ymd}")
         
         # Construct the URL
         formatted_url = url_template.format(**params)
@@ -523,7 +515,7 @@ class ApplescriptSafari(API_Call):
         self.open_url_in_safari(formatted_url)
         
         # Get the raw HTML from the trends page
-        html_content = self.parse_trends_page(search_term)
+        html_content = self.parse_trends_page(spec.terms[0])
         if not html_content:
             raise Exception("Failed to parse trends page")
         

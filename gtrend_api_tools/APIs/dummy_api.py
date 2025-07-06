@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 from typing import Union, List, Optional, Dict, Any
 import pandas as pd
-from gtrend_api_tools.utils import calculate_search_granularity
+from gtrend_api_tools.granularity import GranularityManager
 from gtrend_api_tools.APIs.base_classes import API_Call
 from gtrend_api_tools.APIs.api_utils import sinc_data
 import numpy as np
@@ -27,6 +27,7 @@ class DummyApi(API_Call):
         print_func: Optional[callable] = None,
         tor_control_password: Optional[str] = None,
         api_endpoint: Optional[str] = None,
+        fill_value: Union[str, int, float] = "sinc",
         **kwargs
     ):
         super().__init__(
@@ -47,31 +48,21 @@ class DummyApi(API_Call):
             api_endpoint=api_endpoint,
             **kwargs
         )
+        self.fill_value = fill_value
 
-    def search(
-        self,
-        search_term: Union[str, List[str]],
-        start_date: Optional[Union[str, datetime]] = None,
-        end_date: Optional[Union[str, datetime]] = None,
-        fill_value: Union[int, str] = 'sinc'
-    ) -> 'DummyApi':
+    def search(self, **kwargs) -> 'DummyApi':
         """
         Generate dummy data for testing purposes.
         
         Args:
-            search_term (Union[str, List[str]]): The search term(s) to look up. Can be a single term, a comma-separated string of terms, or a list of terms. We only use the number of terms to determine how many output dummy values to generate.
-            start_date (Optional[Union[str, datetime]]): Start date for the search
-            end_date (Optional[Union[str, datetime]]): End date for the search
-            fill_value (Union[int, str]): If int, fill all values with this number.
-                                         If "sinc", generate sinc wave data with
-                                         num_zero_crossings based on number of search terms.
+            **kwargs: Arguments passed to the parent class search method
         
         Returns:
             DummyApi: Returns self for method chaining
         """
 
         # Call base class search method first to handle terms and dates
-        super().search(search_term, start_date, end_date)
+        super().search(**kwargs)
         # Get the processed search spec for dates
         spec = self.search_spec
             
@@ -84,7 +75,7 @@ class DummyApi(API_Call):
         # Generate data in the format expected by standard_dict_to_df
         self.data = []
         
-        if fill_value == "sinc":
+        if self.fill_value == "sinc":
             # Generate N sinc waves (one for each term)
             term_values = []
             for i, term in enumerate(spec.terms):
@@ -119,7 +110,7 @@ class DummyApi(API_Call):
                     'values': [
                         {
                             'query': term,
-                            'value': fill_value
+                            'value': self.fill_value
                         }
                         for term in spec.terms
                     ]

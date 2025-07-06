@@ -5,309 +5,291 @@ import sys
 import unicodedata
 import numpy as np
 import pandas as pd
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Callable, Union, Dict, Tuple, Any, List
 import yaml
 from dateutil.parser import parse, ParserError
 from types import SimpleNamespace
 import appdirs
 import shutil
+import importlib.resources
+from pathlib import Path
+
+
+# default datetime object for parser is january 1 of current year and has hour zero
+CURRENT_DEFAULT_DT = datetime.now(timezone.utc).replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+
+def parse_date_str(date_str: str) -> datetime:
+    """
+    Parse a date string into a datetime object using the CURRENT_DEFAULT_DT as the default.
+    """
+    return parse(date_str, default=CURRENT_DEFAULT_DT)
 
 def load_config() -> dict:
     """
-    Load configuration from config.yaml if it exists and return it.
-    If the file doesn't exist, copies default_config.yaml to config.yaml and loads from that.
+    Load configuration from user config directory.
+    If the file doesn't exist or is empty, copies default_config.yaml to user config directory.
     Also loads granularity_rules.yaml from the package config folder.
     
-    Config file locations (in order of precedence):
-    1. Local config: ./config.yaml (for development)
-    2. User config: ~/.config/gtrend_api_tools/config.yaml (for installed package)
-    3. Package default: gtrend_api_tools/config/default_config.yaml
+    Config file locations:
+    1. User config: ~/.config/gtrend_api_tools/config.yaml
+    2. Package default: gtrend_api_tools/config/default_config.yaml (copied to user config if needed)
     
     Granularity rules are loaded from:
     - gtrend_api_tools/config/granularity_rules.yaml
     
     The granularity rules in the config are sorted by max_days in ascending order.
     Rules with max_days=None are placed at the end.
+
+    Raises:
+        FileNotFoundError: If no config file is found in any of the expected locations
     """
-    # First check for local config.yaml (development mode)
-    local_config_path = os.path.join(os.getcwd(), 'config.yaml')
-    if os.path.exists(local_config_path):
-        with open(local_config_path, 'r') as f:
-            config = yaml.safe_load(f)
-    else:
-        # Get user config directory
-        config_dir = appdirs.user_config_dir('gtrend_api_tools')
-        user_config_path = os.path.join(config_dir, 'config.yaml')
-        
-        # Package default config path
-        package_config_path = os.path.join(os.path.dirname(__file__), 'config', 'default_config.yaml')
-        
-        # Create user config directory if it doesn't exist
-        os.makedirs(config_dir, exist_ok=True)
-        
-        # If user config doesn't exist, copy from package default
-        if not os.path.exists(user_config_path):
-            if os.path.exists(package_config_path):
-                shutil.copy2(package_config_path, user_config_path)
-                print(f"Created user config at {user_config_path}")
-            else:
-                print("Warning: Default config file not found in package")
-                return {}
-        
-        # Load user config
-        with open(user_config_path, 'r') as f:
-            config = yaml.safe_load(f)
+    _print_if_verbose("\n=== Config Loading Debug ===")
+    # Get user config directory
+    config_dir = appdirs.user_config_dir('gtrend_api_tools')
+    user_config_path = os.path.join(config_dir, 'config.yaml')
+    _print_if_verbose(f"User config path: {user_config_path}")
+    
+    # Create user config directory if it doesn't exist
+    os.makedirs(config_dir, exist_ok=True)
+    
+    # If user config doesn't exist or is empty, copy from package default
+    if not os.path.exists(user_config_path) or os.path.getsize(user_config_path) == 0:
+        _print_if_verbose("User config doesn't exist or is empty, copying from package default")
+        try:
+            # Get the path to the default config file
+            default_config_path = importlib.resources.files('gtrend_api_tools.config').joinpath('default_config.yaml')
+            _print_if_verbose(f"Default config path: {default_config_path}")
+            
+            # Direct file copy
+            import shutil
+            shutil.copy2(default_config_path, user_config_path)
+            _print_if_verbose(f"Copied default config to {user_config_path}")
+            
+        except Exception as e:
+            _print_if_verbose(f"Error copying default config: {e}")
+            raise FileNotFoundError(
+                f"Failed to copy default config to user config directory: {e}\n"
+                f"User config path: {user_config_path}"
+            )
+    
+    # Load user config
+    _print_if_verbose("\nLoading user config...")
+    with open(user_config_path, 'r') as f:
+        config = yaml.safe_load(f)
+    _print_if_verbose("User config contents:")
+    _print_if_verbose(yaml.dump(config))
     
     # Load granularity rules from package config
-    package_rules_path = os.path.join(os.path.dirname(__file__), 'config', 'granularity_rules.yaml')
-    if os.path.exists(package_rules_path):
-        with open(package_rules_path, 'r') as f:
+    try:
+        _print_if_verbose("\nLoading granularity rules...")
+        rules_path = importlib.resources.files('gtrend_api_tools.config').joinpath('granularity_rules.yaml')
+        with open(rules_path, 'r') as f:
             rules_config = yaml.safe_load(f)
             if rules_config and 'granularity_rules' in rules_config:
                 config['granularity_rules'] = rules_config['granularity_rules']
+                _print_if_verbose("Successfully loaded granularity rules")
+    except Exception as e:
+        _print_if_verbose(f"Warning: Failed to load granularity rules: {e}")
     
-    # Sort granularity rules by max_days
+    # Sort granularity rules by max_hours
     if 'granularity_rules' in config:
         rules = config['granularity_rules']
         # Convert to list of tuples (code, rule) for sorting
         rule_items = list(rules.items())
-        # Sort by max_days, putting None values at the end
-        rule_items.sort(key=lambda x: (x[1].get('max_days') is None, x[1].get('max_days', float('inf'))))
+        # Sort by max_hours in ascending order
+        rule_items.sort(key=lambda x: x[1].get('max_hours', float('inf')))
         # Convert back to dict
         config['granularity_rules'] = dict(rule_items)
+    
+    _print_if_verbose("\nFinal config contents:")
+    _print_if_verbose(yaml.dump(config))
+    _print_if_verbose("=== End Config Loading Debug ===\n")
     
     return config
 
 
-# def change_tor_identity(password: Optional[str], print_func: Optional[Callable] = None, control_port: Optional[int] = None) -> None:
+# def get_index_granularity(index: Union[pd.DatetimeIndex, pd.PeriodIndex], verbose: bool = False) -> str:
 #     """
-#     Change the Tor identity by connecting to the Tor control port and sending a NEWNYM signal.
-#     Includes error handling and retry logic.
+#     Determine the granularity of a pandas DateTimeIndex or PeriodIndex.
     
 #     Args:
-#         password (Optional[str]): Password for Tor control port
-#         print_func (Optional[Callable]): Function to use for printing debug information
-#         control_port (Optional[int]): Port number for Tor control port. If None, uses value from config.yaml
+#         index (Union[pd.DatetimeIndex, pd.PeriodIndex]): The index to analyze
+#         verbose (bool): Whether to print debug information
+        
+#     Returns:
+#         str: The granularity code ('h' for hour, 'D' for day, 'W' for week, 'ME' for month end)
 #     """
-#     if print_func is None:
-#         print_func = print
+#     # Handle empty DataFrame or invalid index type
+#     if len(index) == 0 or not isinstance(index, (pd.DatetimeIndex, pd.PeriodIndex)):
+#         return 'D'  # Default to daily granularity
         
-#     try:
-#         from stem.control import Controller
-#         from stem import Signal
-#     except ImportError:
-#         print_func("Error: stem library not installed. Please install it with 'pip install stem'")
-#         return
+#     # First try to get the frequency directly
+#     if index.freq is not None:
+#         freq_str = str(index.freq)
+#         if freq_str.startswith('h'):
+#             return 'h'
+#         elif freq_str.startswith('D'):
+#             return 'D'
+#         elif freq_str.startswith('W'):
+#             return 'W'
+#         elif freq_str.startswith('M'):
+#             return 'M'
+#     # If no frequency is set, try to infer from time differences
+#     if len(index) < 2:
+#         return 'D'  # Default to day if we can't determine
     
-#     if not password:
-#         print_func("Error: Tor control password not provided")
-#         return
+#     # Convert PeriodIndex to DatetimeIndex if needed
+#     if isinstance(index, pd.PeriodIndex):
+#         index = index.to_timestamp()
+    
+#     # Calculate time differences in nanoseconds
+#     time_diffs = np.diff(index.astype(np.int64))
+    
+#     # Print debugging information
+#     _print_if_verbose("Unique time differences and their counts:", verbose)
+#     _print_if_verbose(pd.Series(time_diffs).value_counts(), verbose)
+    
+#     # Use pandas value_counts instead of np.bincount for memory efficiency
+#     most_common_diff = pd.Series(time_diffs).value_counts().index[0]
+#     _print_if_verbose(f"\nMost common difference: {most_common_diff} nanoseconds", verbose)
+    
+#     # Convert to timedelta and check
+#     td = pd.Timedelta(most_common_diff, unit='ns')
+#     _print_if_verbose(f"Converted to timedelta: {td}", verbose)
+    
+#     if td <= pd.Timedelta(hours=1):
+#         return 'h'
+#     elif td <= pd.Timedelta(days=1):
+#         return 'D'
+#     elif td <= pd.Timedelta(weeks=1):
+#         return 'W'
+#     else:
+#         return 'ME'
 
-#     # Load control port from config if not provided
-#     if control_port is None:
+# def calculate_search_granularity(
+#     start_date: Union[str, datetime],
+#     end_date: Union[str, datetime],
+#     config: Optional[Dict[str, Any]] = None,
+#     verbose: bool = False
+# ) -> Dict[str, Union[str, pd.DatetimeIndex, pd.PeriodIndex, int]]:
+#     """
+#     Calculate the appropriate granularity for a Google Trends search based on the time range
+#     and generate the corresponding DateTimeIndex and PeriodIndex.
+
+#     This takes start_date and end_date, truncates any HH:MM:SS, and then calculates the granularity based on the time range.
+
+#     Note: Although Google Trends allows (secretly, behind the scenes) for dates to be specified with hours for very short time ranges,
+#     we don't use this because it's not documented and it's not clear if it's reliable. We had to draw the line somewhere.
+    
+#     Args:
+#         start_date (Union[str, datetime]): Start date of the search
+#         end_date (Union[str, datetime]): End date of the search
+#         config (Optional[Dict[str, Any]]): Configuration dictionary containing granularity rules
+#         verbose (bool): Whether to print debug information
+        
+#     Returns:
+#         Dict[str, Union[str, pd.DatetimeIndex, pd.PeriodIndex, int]]: Dictionary containing:
+#             - "granularity": The appropriate granularity to use ("h" for hour, "D" for day, "W" for week, or "MS" for month start)
+#             - "datetime_index": A pandas DateTimeIndex with the appropriate frequency
+#             - "period_index": A pandas PeriodIndex with the appropriate frequency
+#             - "max_units": The maximum number of units possible for the calculated granularity
+#     """
+#     # Get granularity rules from config or use defaults
+#     default_rules = [
+#         {'name': 'hourly', 'max_days': 8, 'max_inclusive': False, 'code': 'h'},
+#         {'name': 'daily', 'max_days': 270, 'max_inclusive': False, 'code': 'D'},
+#         {'name': 'weekly', 'max_days': 1900, 'max_inclusive': False, 'code': 'W'},
+#         {'name': 'monthly', 'code': 'MS'}
+#     ]
+    
+#     # Load config if not provided
+#     if config is None:
 #         config = load_config()
-#         control_port = config.get('tor', {}).get('control_port', 9151)  # Default to 9151 if not found in config
-
-#     try:
-#         # Try to connect to the Tor control port
-#         with Controller.from_port(port=control_port) as controller:
-#             # Authenticate with the controller
-#             controller.authenticate(password=password)
-            
-#             # Send the NEWNYM signal to change the identity
-#             controller.signal(Signal.NEWNYM)
-#             print_func("Tor identity changed successfully.")
-            
-#             # Wait a moment to ensure the change takes effect
-#             time.sleep(2)
-            
-#     except Exception as e:
-#         print_func(f"Error changing Tor identity: {e}")
-#         print_func("Make sure Tor is running with control port enabled.")
-#         print_func(f"Add 'ControlPort {control_port}' to your torrc file and restart Tor.")
-
-def get_index_granularity(index: Union[pd.DatetimeIndex, pd.PeriodIndex], verbose: bool = False) -> str:
-    """
-    Determine the granularity of a pandas DateTimeIndex or PeriodIndex.
+#     verbose = True
+#     # Get granularity rules from config or use defaults
+#     granularity_rules = config.get('granularity_rules', default_rules) if config else default_rules
     
-    Args:
-        index (Union[pd.DatetimeIndex, pd.PeriodIndex]): The index to analyze
-        verbose (bool): Whether to print debug information
+#     # Convert dates to datetime if they're strings
+#     if isinstance(start_date, str):
+#         start_dt = datetime.strptime(start_date, "%Y-%m-%d")
+#     else:
+#         start_dt = start_date
         
-    Returns:
-        str: The granularity code ('h' for hour, 'D' for day, 'W' for week, 'ME' for month end)
-    """
-    # Handle empty DataFrame or invalid index type
-    if len(index) == 0 or not isinstance(index, (pd.DatetimeIndex, pd.PeriodIndex)):
-        return 'D'  # Default to daily granularity
-        
-    # First try to get the frequency directly
-    if index.freq is not None:
-        freq_str = str(index.freq)
-        if freq_str.startswith('h'):
-            return 'h'
-        elif freq_str.startswith('D'):
-            return 'D'
-        elif freq_str.startswith('W'):
-            return 'W'
-        elif freq_str.startswith('M'):
-            return 'M'
-    # If no frequency is set, try to infer from time differences
-    if len(index) < 2:
-        return 'D'  # Default to day if we can't determine
+#     if isinstance(end_date, str):
+#         end_dt = datetime.strptime(end_date, "%Y-%m-%d")
+#     else:
+#         end_dt = end_date
     
-    # Convert PeriodIndex to DatetimeIndex if needed
-    if isinstance(index, pd.PeriodIndex):
-        index = index.to_timestamp()
+#     # Truncate any HH:MM:SS
+#     start_dt = start_dt.replace(hour=0, minute=0, second=0, microsecond=0)
+#     end_dt = end_dt.replace(hour=0, minute=0, second=0, microsecond=0)
     
-    # Calculate time differences in nanoseconds
-    time_diffs = np.diff(index.astype(np.int64))
+#     # Calculate the time range in days
+#     days_diff = (end_dt - start_dt).days
     
-    # Print debugging information
-    _print_if_verbose("Unique time differences and their counts:", verbose)
-    _print_if_verbose(pd.Series(time_diffs).value_counts(), verbose)
+#     # Determine granularity based on rules in order
+#     for rule in granularity_rules:
+#         if 'max_days' in rule:
+#             if rule['max_inclusive']:
+#                 if days_diff <= rule['max_days']:
+#                     granularity = rule['code']
+#                     max_units = rule['max_days']
+#                     break
+#             else:
+#                 if days_diff < rule['max_days']:
+#                     granularity = rule['code']
+#                     max_units = rule['max_days']
+#                     break
+#         else:
+#             # Last rule (monthly) has no max_days
+#             granularity = rule['code']
+#             max_units = None  # No limit for monthly
+#             break
     
-    # Use pandas value_counts instead of np.bincount for memory efficiency
-    most_common_diff = pd.Series(time_diffs).value_counts().index[0]
-    _print_if_verbose(f"\nMost common difference: {most_common_diff} nanoseconds", verbose)
-    
-    # Convert to timedelta and check
-    td = pd.Timedelta(most_common_diff, unit='ns')
-    _print_if_verbose(f"Converted to timedelta: {td}", verbose)
-    
-    if td <= pd.Timedelta(hours=1):
-        return 'h'
-    elif td <= pd.Timedelta(days=1):
-        return 'D'
-    elif td <= pd.Timedelta(weeks=1):
-        return 'W'
-    else:
-        return 'ME'
-
-def calculate_search_granularity(
-    start_date: Union[str, datetime],
-    end_date: Union[str, datetime],
-    config: Optional[Dict[str, Any]] = None,
-    verbose: bool = False
-) -> Dict[str, Union[str, pd.DatetimeIndex, pd.PeriodIndex, int]]:
-    """
-    Calculate the appropriate granularity for a Google Trends search based on the time range
-    and generate the corresponding DateTimeIndex and PeriodIndex.
-
-    This takes start_date and end_date, truncates any HH:MM:SS, and then calculates the granularity based on the time range.
-
-    Note: Although Google Trends allows (secretly, behind the scenes) for dates to be specified with hours for very short time ranges,
-    we don't use this because it's not documented and it's not clear if it's reliable. We had to draw the line somewhere.
-    
-    Args:
-        start_date (Union[str, datetime]): Start date of the search
-        end_date (Union[str, datetime]): End date of the search
-        config (Optional[Dict[str, Any]]): Configuration dictionary containing granularity rules
-        verbose (bool): Whether to print debug information
-        
-    Returns:
-        Dict[str, Union[str, pd.DatetimeIndex, pd.PeriodIndex, int]]: Dictionary containing:
-            - "granularity": The appropriate granularity to use ("h" for hour, "D" for day, "W" for week, or "MS" for month start)
-            - "datetime_index": A pandas DateTimeIndex with the appropriate frequency
-            - "period_index": A pandas PeriodIndex with the appropriate frequency
-            - "max_units": The maximum number of units possible for the calculated granularity
-    """
-    # Get granularity rules from config or use defaults
-    default_rules = [
-        {'name': 'hourly', 'max_days': 8, 'max_inclusive': False, 'code': 'h'},
-        {'name': 'daily', 'max_days': 270, 'max_inclusive': False, 'code': 'D'},
-        {'name': 'weekly', 'max_days': 1900, 'max_inclusive': False, 'code': 'W'},
-        {'name': 'monthly', 'code': 'MS'}
-    ]
-    
-    # Load config if not provided
-    if config is None:
-        config = load_config()
-    verbose = True
-    # Get granularity rules from config or use defaults
-    granularity_rules = config.get('granularity_rules', default_rules) if config else default_rules
-    
-    # Convert dates to datetime if they're strings
-    if isinstance(start_date, str):
-        start_dt = datetime.strptime(start_date, "%Y-%m-%d")
-    else:
-        start_dt = start_date
-        
-    if isinstance(end_date, str):
-        end_dt = datetime.strptime(end_date, "%Y-%m-%d")
-    else:
-        end_dt = end_date
-    
-    # Truncate any HH:MM:SS
-    start_dt = start_dt.replace(hour=0, minute=0, second=0, microsecond=0)
-    end_dt = end_dt.replace(hour=0, minute=0, second=0, microsecond=0)
-    
-    # Calculate the time range in days
-    days_diff = (end_dt - start_dt).days
-    
-    # Determine granularity based on rules in order
-    for rule in granularity_rules:
-        if 'max_days' in rule:
-            if rule['max_inclusive']:
-                if days_diff <= rule['max_days']:
-                    granularity = rule['code']
-                    max_units = rule['max_days']
-                    break
-            else:
-                if days_diff < rule['max_days']:
-                    granularity = rule['code']
-                    max_units = rule['max_days']
-                    break
-        else:
-            # Last rule (monthly) has no max_days
-            granularity = rule['code']
-            max_units = None  # No limit for monthly
-            break
-    
-    # if granularity is monthly, we need to calculate the number of months between start and end dates
-    # first replace the day of the month with the first day of the month
+#     # if granularity is monthly, we need to calculate the number of months between start and end dates
+#     # first replace the day of the month with the first day of the month
 
     
-    if granularity == 'h':
-        hour_diff = diff_hour(start_dt, end_dt)
-        _print_if_verbose(f"Hours difference: {hour_diff}", verbose)
-        datetime_index = pd.date_range(start=start_dt, freq=granularity, periods=hour_diff + 1)
-        period_index = pd.PeriodIndex(datetime_index)
-    elif granularity == 'D':
-        days_diff = diff_day(start_dt, end_dt)
-        _print_if_verbose(f"Days difference: {days_diff}", verbose)
-        datetime_index = pd.date_range(start=start_dt, freq=granularity, periods=days_diff + 1)
-        period_index = pd.PeriodIndex(datetime_index)
-    elif granularity == 'W':
-        weeks_diff = diff_week(start_dt, end_dt)
-        _print_if_verbose(f"Weeks difference: {weeks_diff}", verbose)
-        datetime_index = pd.date_range(start=start_dt, freq=granularity, periods=weeks_diff + 1)
-        period_index = pd.PeriodIndex(datetime_index)
-    elif granularity == 'MS':
-        months_diff = diff_month(start_dt, end_dt)
-        _print_if_verbose(f"Months difference: {months_diff}", verbose)
-        datetime_index = pd.date_range(start=start_dt.replace(day=1), freq=granularity, periods=months_diff + 1)
-        period_index = pd.PeriodIndex(datetime_index, freq='M')
-    # Create DateTimeIndex with appropriate frequency, ensuring both start and end dates are included
-    #datetime_index = pd.date_range(start=start_dt, freq=granularity, periods=days_diff + 1)
-    _print_if_verbose(f"Datetime index length: {len(datetime_index)}", verbose)
-    _print_if_verbose(f"Period index length: {len(period_index)}", verbose)
+#     if granularity == 'h':
+#         hour_diff = diff_hour(start_dt, end_dt)
+#         _print_if_verbose(f"Hours difference: {hour_diff}", verbose)
+#         datetime_index = pd.date_range(start=start_dt, freq=granularity, periods=hour_diff + 1)
+#         period_index = pd.PeriodIndex(datetime_index)
+#     elif granularity == 'D':
+#         days_diff = diff_day(start_dt, end_dt)
+#         _print_if_verbose(f"Days difference: {days_diff}", verbose)
+#         datetime_index = pd.date_range(start=start_dt, freq=granularity, periods=days_diff + 1)
+#         period_index = pd.PeriodIndex(datetime_index)
+#     elif granularity == 'W':
+#         weeks_diff = diff_week(start_dt, end_dt)
+#         _print_if_verbose(f"Weeks difference: {weeks_diff}", verbose)
+#         datetime_index = pd.date_range(start=start_dt, freq=granularity, periods=weeks_diff + 1)
+#         period_index = pd.PeriodIndex(datetime_index)
+#     elif granularity == 'MS':
+#         months_diff = diff_month(start_dt, end_dt)
+#         _print_if_verbose(f"Months difference: {months_diff}", verbose)
+#         datetime_index = pd.date_range(start=start_dt.replace(day=1), freq=granularity, periods=months_diff + 1)
+#         period_index = pd.PeriodIndex(datetime_index, freq='M')
+#     # Create DateTimeIndex with appropriate frequency, ensuring both start and end dates are included
+#     #datetime_index = pd.date_range(start=start_dt, freq=granularity, periods=days_diff + 1)
+#     _print_if_verbose(f"Datetime index length: {len(datetime_index)}", verbose)
+#     _print_if_verbose(f"Period index length: {len(period_index)}", verbose)
     
-    # Create PeriodIndex with appropriate frequency
-    #period_index = pd.period_range(start=start_dt, end=end_dt, freq=granularity)
+#     # Create PeriodIndex with appropriate frequency
+#     #period_index = pd.period_range(start=start_dt, end=end_dt, freq=granularity)
     
-    if verbose:
-        _print_if_verbose(f"Granularity for date range {start_dt.strftime('%Y-%m-%d')} to {end_dt.strftime('%Y-%m-%d')} ({days_diff} days) is {granularity}", verbose)
-        _print_if_verbose(f"Created {len(datetime_index)} datetime periods and {len(period_index)} period indices", verbose)
-        _print_if_verbose(f"Maximum units for {granularity} granularity: {max_units if max_units is not None else '[no limit]'}", verbose)
+#     if verbose:
+#         _print_if_verbose(f"Granularity for date range {start_dt.strftime('%Y-%m-%d')} to {end_dt.strftime('%Y-%m-%d')} ({days_diff} days) is {granularity}", verbose)
+#         _print_if_verbose(f"Created {len(datetime_index)} datetime periods and {len(period_index)} period indices", verbose)
+#         _print_if_verbose(f"Maximum units for {granularity} granularity: {max_units if max_units is not None else '[no limit]'}", verbose)
     
-    return {
-        "granularity": granularity,
-        "datetime_index": datetime_index,
-        "period_index": period_index,
-        "max_units": max_units
-    }
+#     return {
+#         "granularity": granularity,
+#         "datetime_index": datetime_index,
+#         "period_index": period_index,
+#         "max_units": max_units
+#     }
 
 def _custom_mode(df: pd.DataFrame, axis: int = 1) -> pd.Series:
     """
@@ -482,12 +464,12 @@ def _print_if_verbose(message: str, verbose: bool = False) -> None:
         
         # Only print the caller names if they have changed
         if caller_name != _print_if_verbose.last_caller or caller_caller_name != _print_if_verbose.last_caller_caller:
-            print(f"\n[{caller_caller_name}] / [{caller_name}]")
+            _print_if_verbose(f"\n[{caller_caller_name}] / [{caller_name}]")
             _print_if_verbose.last_caller = caller_name
             _print_if_verbose.last_caller_caller = caller_caller_name
             
         # Print the message
-        print(message)
+        _print_if_verbose(message)
 
 def diff_month(d1: datetime, d2: datetime) -> int:
     d2m = d2.replace(day=1) # replace the day of the month with the first day of the month
@@ -501,7 +483,20 @@ def diff_day(d1: datetime, d2: datetime) -> int:
     return (d2-d1).days
 
 def diff_hour(d1: datetime, d2: datetime) -> int:
-    return (d2-d1).seconds // 3600
+    return ((d2-d1).total_seconds() // 3600)
+
+def period_index_full_duration(period_index: pd.PeriodIndex) -> timedelta:
+    """
+    Calculate the duration of a period index, without the 1 microsecond offset that pandas does by default.
+    Use this with caution! This is what we want for most of our Google Trends purposes,
+    but there are good reasons why Pandas Periods work this way normally.
+    Args:
+        period_index (pd.PeriodIndex): The period index to calculate the duration of.
+    Returns:
+        timedelta: The duration of the period index.
+    """
+    temp_period_index = period_index.union([period_index[-1] + 1])
+    return temp_period_index[-1].start_time - temp_period_index[0].start_time
 
 
 # def make_time_range(

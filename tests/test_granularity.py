@@ -5,18 +5,13 @@ from gtrend_api_tools.granularity import GranularityManager
 from gtrend_api_tools.utils import load_config
 
 @pytest.fixture
-def config():
-    """Fixture providing a test configuration."""
-    return load_config()
-
-@pytest.fixture
-def granularity_manager(config):
+def granularity_manager(test_config):
     """Fixture providing a GranularityManager instance."""
-    return GranularityManager(config)
+    return GranularityManager(test_config, verbose=True)
 
-def test_init_with_config(config):
+def test_init_with_config(test_config):
     """Test initialization with provided config."""
-    gm = GranularityManager(config)
+    gm = GranularityManager(test_config)
     assert isinstance(gm.rules, dict)
     assert len(gm.rules) > 0
 
@@ -46,7 +41,7 @@ def test_get_index_granularity_weekly(granularity_manager):
 def test_get_index_granularity_monthly(granularity_manager):
     """Test granularity detection for monthly data."""
     # Create monthly index
-    index = pd.date_range(start='2024-01-01', periods=12, freq='M')
+    index = pd.date_range(start='2024-01-01', periods=12, freq='MS')
     assert granularity_manager.get_index_granularity(index) == 'M'
 
 def test_get_index_granularity_empty(granularity_manager):
@@ -92,13 +87,13 @@ def test_calculate_total_units_hourly(granularity_manager):
     """Test total units calculation for hourly data."""
     start_dt = datetime(2024, 1, 1)
     end_dt = datetime(2024, 1, 1, 23, 0, 0)
-    assert granularity_manager.calculate_total_units(start_dt, end_dt, 'h') == 24
+    assert granularity_manager.calculate_total_units(start_dt, end_dt, 'h')['num_periods'] == 24
 
 def test_calculate_total_units_daily(granularity_manager):
     """Test total units calculation for daily data."""
     start_dt = datetime(2024, 1, 1)
     end_dt = datetime(2024, 1, 7)
-    assert granularity_manager.calculate_total_units(start_dt, end_dt, 'D') == 7
+    assert granularity_manager.calculate_total_units(start_dt, end_dt, 'D')['num_periods'] == 7
 
 def test_calculate_total_units_invalid_granularity(granularity_manager):
     """Test total units calculation with invalid granularity."""
@@ -110,14 +105,16 @@ def test_calculate_total_units_invalid_granularity(granularity_manager):
 def test_calculate_search_granularity_hourly(granularity_manager):
     """Test search granularity calculation for hourly data."""
     start_date = '2024-01-01'
-    end_date = '2024-01-02'
+    end_date = '2024-01-08' # seven days will give hourly granularity
     result = granularity_manager.calculate_search_granularity(start_date, end_date)
+    len_result_dt_index = len(result['datetime_index'])
+    len_result_per_index = len(result['period_index'])
     
     assert result['granularity'] == 'h'
-    assert len(result['datetime_index']) == 25  # 24 hours + 1
-    assert len(result['period_index']) == 25
+    assert len_result_dt_index == 169  # 7 days *24 hours + 1
+    assert len_result_per_index == 169
     assert result['max_units'] == granularity_manager.rules['h']['max_records']
-    assert result['blocks'] == 1
+
 
 def test_calculate_search_granularity_daily(granularity_manager):
     """Test search granularity calculation for daily data."""
@@ -129,61 +126,57 @@ def test_calculate_search_granularity_daily(granularity_manager):
     assert len(result['datetime_index']) == 30
     assert len(result['period_index']) == 30
     assert result['max_units'] == granularity_manager.rules['D']['max_records']
-    assert result['blocks'] == 1
 
-def test_calculate_search_granularity_with_granularity_param(granularity_manager):
-    """Test search granularity calculation with explicit granularity."""
+def test_calculate_search_granularity_automatic_calculation(granularity_manager):
+    """Test that search granularity calculation always calculates automatically."""
     start_date = '2024-01-01'
     end_date = '2024-01-30'
-    result = granularity_manager.calculate_search_granularity(start_date, end_date, granularity='D')
+    result = granularity_manager.calculate_search_granularity(start_date, end_date)
     
+    # Should automatically calculate appropriate granularity (daily for 30 days)
     assert result['granularity'] == 'D'
     assert len(result['datetime_index']) == 30
     assert len(result['period_index']) == 30
     assert result['max_units'] == granularity_manager.rules['D']['max_records']
-    assert result['blocks'] == 1
 
-def test_calculate_search_granularity_invalid_granularity(granularity_manager):
-    """Test search granularity calculation with invalid granularity."""
+def test_calculate_search_granularity_no_granularity_parameter(granularity_manager):
+    """Test that search granularity calculation does not accept granularity parameter."""
     start_date = '2024-01-01'
     end_date = '2024-01-02'
-    with pytest.raises(ValueError):
-        granularity_manager.calculate_search_granularity(start_date, end_date, granularity='X')
+    with pytest.raises(TypeError):
+        granularity_manager.calculate_search_granularity(start_date, end_date, granularity='D')
 
-def test_calculate_search_granularity_large_range(granularity_manager):
+def test_calculate_search_granularity_year_long_range(granularity_manager):
     """Test search granularity calculation for a large date range."""
     start_date = '2024-01-01'
     end_date = '2024-12-31'
     result = granularity_manager.calculate_search_granularity(start_date, end_date)
     
     # Should use monthly granularity for a year-long range
-    assert result['granularity'] == 'M'
-    assert len(result['datetime_index']) == 13  # 12 months + 1
-    assert len(result['period_index']) == 13
-    assert result['max_units'] == granularity_manager.rules['M']['max_records']
-    assert result['blocks'] == 1
+    assert result['granularity'] == 'W'
+    assert len(result['datetime_index']) == 53  # 52 weeks + 1
+    assert len(result['period_index']) == 53
+    assert result['max_units'] == granularity_manager.rules['W']['max_records']
 
 def test_calculate_search_granularity_with_datetime_objects(granularity_manager):
     """Test search granularity calculation with datetime objects."""
     start_dt = datetime(2024, 1, 1)
-    end_dt = datetime(2024, 1, 7)
+    end_dt = datetime(2024, 1, 28)
     result = granularity_manager.calculate_search_granularity(start_dt, end_dt)
     
     assert result['granularity'] == 'D'
-    assert len(result['datetime_index']) == 7
-    assert len(result['period_index']) == 7
+    assert len(result['datetime_index']) == 28
+    assert len(result['period_index']) == 28
     assert result['max_units'] == granularity_manager.rules['D']['max_records']
-    assert result['blocks'] == 1
 
 def test_calculate_search_granularity_with_time_components(granularity_manager):
     """Test search granularity calculation with time components in dates."""
     start_dt = datetime(2024, 1, 1, 12, 30, 45)
-    end_dt = datetime(2024, 1, 7, 23, 59, 59)
+    end_dt = datetime(2024, 1, 28, 23, 59, 59)
     result = granularity_manager.calculate_search_granularity(start_dt, end_dt)
     
     # Time components should be truncated
     assert result['granularity'] == 'D'
-    assert len(result['datetime_index']) == 7
-    assert len(result['period_index']) == 7
+    assert len(result['datetime_index']) == 28
+    assert len(result['period_index']) == 28
     assert result['max_units'] == granularity_manager.rules['D']['max_records']
-    assert result['blocks'] == 1 

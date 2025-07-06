@@ -1,31 +1,88 @@
 granularity_rules:
+  m:
+    name: "one-minute"
+    max_hours: 5
+    max_days: null
+    max_inclusive: False  # means < 5 hours
+    allows_hours: True
+    max_records: 241 # see below for explanation of this value
+    record_seconds: 3600
+  e:
+    name: "eight-minute"
+    max_hours: 36
+    max_days: null
+    max_inclusive: False  # means < 36 hours
+    allows_hours: True
+    max_records: 263 # see below for explanation of this value
+    record_seconds: 3600
+  n:
+    name: "sixteen-minute"
+    max_hours: 72
+    max_days: 3
+    max_inclusive: False  # means < 72 hours
+    allows_hours: True
+    max_records: 267 # see below for explanation of this value
+    record_seconds: 3600
   h:
     name: "hourly"
+    max_hours: 192
     max_days: 8
-    max_inclusive: True  # means <= 8 days
-    max_records: 192
+    max_inclusive: False  # means < 8 days
+    allows_hours: True
+    max_records: 191
     record_seconds: 3600
   D:
     name: "daily"
+    max_hours: 6480
     max_days: 270
     max_inclusive: True  # means <= 270 days
+    allows_hours: False
     max_records: 270
     record_seconds: 86400
   W:
     name: "weekly"
+    max_hours: 45600
     max_days: 1900
     max_inclusive: True  # means <= 1900 days
+    allows_hours: False
     max_records: 1900
     record_seconds: 604800
   M:
     name: "monthly"
-    max_days: null
-    max_inclusive: null
+    max_hours: .inf
+    max_days: .inf
+    max_inclusive: True
+    allows_hours: False
     max_records: inf
     record_seconds: 2419200 # minimum, 28 days. Maximum is 2678400, 31 days.
 
+
+# The max_records for 1 minute granularity (m) is 241 because
+# 240 * 1 minutes = 240 minutes = 4 hours.
+# It has to be less than 5 hours and it only goes by hours,
+# so that means the longest search we can request is 4 hours.
+# So the longest set of periods is 240 of 1 minute periods (4 hours exactly),
+# and then the number of data points is 241 because the data includes both the start and end points.
+
+# The max_records for 8 minute granularity (e) is 263 because
+# 262 * 8 minutes = 2096 minutes = 34 hours 56 minutes.
+# It has to be less than 36 hours and it only goes by hours,
+# so that means the longest search we can request is 35 hours,
+# which is not an even multiple of 8 minutes.
+# So the longest set of periods is 262 of 8 minute periods (34 hours 56 minutes),
+# and then the number of data points is 263 because the data includes both the start and end points.
+
+# The max_records for 16 minute granularity (n) is 267 because
+# 266 * 16 minutes = 4256 minutes = 70 hours 56 minutes.
+# It has to be less than 72 hours and it only goes by hours,
+# so that means the longest search we can request is 71 hours,
+# which is not an even multiple of 16 minutes.
+# So the longest set of periods is 266 of 16 minute periods (70 hours 56 minutes),
+# and then the number of data points is 267 because the data includes both the start and end points.
+
+# Here is what I based this on, although I believe I have corrected some errors.
 # The complete list of granularities taken from github/sdil87/trendspy/src/trendspytimeframe_utils.py
-# although I disagree with their non-inclusive max limits
+# although I disagree with some of their non-inclusive max limits
 # (i.e. I say <= 270 days instead of <270 days
 # because we can certainly get search results that have 270 day records in them)
 # <5 hours: 1 minute

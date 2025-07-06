@@ -1,16 +1,6 @@
 import pytest
 from datetime import datetime, timedelta
-import os
-import sys
-
-# Get the absolute path to the gtrend_api_tools directory
-current_dir = os.path.dirname(os.path.abspath(__file__))
-parent_dir = os.path.dirname(current_dir)
-#sys.path.insert(0, parent_dir)
-
-# Import directly from the source file
-sys.path.insert(0, os.path.join(parent_dir, 'gtrend_api_tools'))
-from APIs.date_ranges import DateRange
+from gtrend_api_tools.search_specs import DateRange
 
 def test_init():
     """Test DateRange initialization"""

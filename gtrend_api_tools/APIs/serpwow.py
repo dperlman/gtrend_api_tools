@@ -2,7 +2,7 @@ import time
 import requests
 from datetime import datetime, timedelta
 from typing import Union, List, Optional, Dict, Any
-from gtrend_api_tools.APIs.date_ranges import DateRange
+from gtrend_api_tools.search_specs import DateRange
 from gtrend_api_tools.APIs.base_classes import API_Call
 import pandas as pd
 
@@ -22,46 +22,38 @@ class Serpwow(API_Call):
             **kwargs: Additional keyword arguments passed to API_Call
         """
         super().__init__(api_key=api_key, api_endpoint=api_endpoint, **kwargs)
-
-    def search(
-        self,
-        search_term: Union[str, List[str]],
-        start_date: Optional[Union[str, datetime]] = None,
-        end_date: Optional[Union[str, datetime]] = None
-    ) -> 'Serpwow':
+    
+    def search(self, **kwargs) -> 'Serpwow':
         """
         Search Google Trends using the Serpwow API.
         
         Args:
-            search_term (Union[str, List[str]]): The search term(s) to look up in Google Trends
-            start_date (Optional[Union[str, datetime]]): Start date for the search
-            end_date (Optional[Union[str, datetime]]): End date for the search
+            **kwargs: Arguments passed to the parent class search method
             
         Returns:
             Serpwow: Returns self for method chaining
         """
         # Call base class search method first to handle terms and dates
-        super().search(search_term, start_date, end_date)
+        super().search(**kwargs)
         # Get the processed search spec for dates
         spec = self.search_spec
         
         self.print_func(f"Sending Serpwow search request:")
-        self.print_func(f"  Search term: {search_term}")
-        self.print_func(f"  Start date: {start_date if start_date else 'default'}")
-        self.print_func(f"  End date: {end_date if end_date else 'default'}")
+        self.print_func(f"  Search term: {spec.term_string}")
+        self.print_func(f"  Start date: {spec.start_date}")
+        self.print_func(f"  End date: {spec.end_date}")
         
         try:
             # Parse time range if provided
-            dr = DateRange(start_date, end_date)
-            time_period_min = dr.formatted_range_mdy.split()[0]
-            time_period_max = dr.formatted_range_mdy.split()[1]
+            time_period_min = spec.formatted_range_mdy.split()[0]
+            time_period_max = spec.formatted_range_mdy.split()[1]
             
             # Set up the request parameters
             params = {
                 'api_key': self.api_key,
                 'engine': 'google',
                 'search_type': 'trends',
-                'q': search_term,
+                'q': spec.term_string,
                 'data_type': 'INTEREST_OVER_TIME',
                 'time_period': 'custom',
                 'time_period_min': time_period_min,
@@ -130,25 +122,19 @@ class Serpwow(API_Call):
             
         return self
 
-def search_serpwow(
-    search_term: Union[str, List[str]],
-    start_date: Optional[Union[str, datetime]] = None,
-    end_date: Optional[Union[str, datetime]] = None,
-    api_key: Optional[str] = None,
-    **kwargs
-) -> Union[pd.DataFrame, Dict[str, Any]]:
-    """
-    Search Google Trends using the Serpwow API.
+# def search_serpwow(**kwargs) -> Union[pd.DataFrame, Dict[str, Any]]:
+#     """
+#     Search Google Trends using the Serpwow API.
     
-    Args:
-        search_term (Union[str, List[str]]): The search term(s) to look up in Google Trends
-        start_date (Optional[Union[str, datetime]]): Start date for the search
-        end_date (Optional[Union[str, datetime]]): End date for the search
-        api_key (Optional[str]): The Serpwow API key. If None, will try to get from environment variable SERPWOW_API_KEY
-        **kwargs: Additional keyword arguments passed to API_Call
+#     Args:
+#         search_term (Union[str, List[str]]): The search term(s) to look up in Google Trends
+#         start_date (Optional[Union[str, datetime]]): Start date for the search
+#         end_date (Optional[Union[str, datetime]]): End date for the search
+#         api_key (Optional[str]): The Serpwow API key. If None, will try to get from environment variable SERPWOW_API_KEY
+#         **kwargs: Additional keyword arguments passed to API_Call
         
-    Returns:
-        Union[pd.DataFrame, Dict[str, Any]]: Standardized search results
-    """
-    serp = Serpwow(**locals())
-    return serp.search(search_term, start_date, end_date).standardize_data().data 
+#     Returns:
+#         Union[pd.DataFrame, Dict[str, Any]]: Standardized search results
+#     """
+#     serp = Serpwow(**locals())
+#     return serp.search(**kwargs).standardize_data().data 

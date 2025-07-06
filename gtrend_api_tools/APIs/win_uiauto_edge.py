@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from typing import Union, List, Optional, Dict, Any
 import pandas as pd
 import unicodedata
-from gtrend_api_tools.APIs.date_ranges import DateRange
+from gtrend_api_tools.search_specs import DateRange
 from gtrend_api_tools.APIs.base_classes import API_Call
 
 class WinUiautoEdge(API_Call):

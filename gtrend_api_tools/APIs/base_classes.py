@@ -3,56 +3,7 @@ from datetime import datetime
 import pandas as pd
 from gtrend_api_tools.utils import _print_if_verbose, load_config
 from gtrend_api_tools.APIs.api_utils import standard_dict_to_df
-from gtrend_api_tools.APIs.date_ranges import DateRange
-
-class SearchSpec(DateRange):
-    """
-    A class that extends DateRange to include search terms.
-    This class handles both date range and search terms for a single search operation.
-    """
-    def __init__(
-        self,
-        terms: Optional[Union[str, List[str]]] = None,
-        start_date: Optional[Union[str, datetime]] = None,
-        end_date: Optional[Union[str, datetime]] = None,
-        granularity: str = 'D',
-        verbose: bool = False
-    ):
-        """
-        Initialize a SearchSpec instance.
-        
-        Args:
-            terms (Optional[Union[str, List[str]]]): Search terms. If string, will be split on commas
-            start_date (Optional[Union[str, datetime]]): Start date for the search
-            end_date (Optional[Union[str, datetime]]): End date for the search
-            granularity (str): The granularity of the date range. One of: 's' (seconds), 'm' (minutes), 'h' (hourly), 
-                             'D' (daily), 'W' (weekly), 'M' (monthly), 'Q' (quarterly), 'Y' (yearly), 'X' (decade).
-                             Defaults to 'D'.
-            verbose (bool): Whether to print debug information
-        """
-        # Load config
-        self.config = load_config()
-        
-        # Check for false-like values
-        if not terms:
-            raise ValueError("Search terms cannot be None or empty.")
-        if not start_date:
-            raise ValueError("Start date cannot be None or empty.")
-        if not end_date:
-            raise ValueError("End date cannot be None or empty.")
-
-        # Initialize DateRange first with dates
-        super().__init__(start_date=start_date, end_date=end_date, granularity=granularity, verbose=verbose)
-        
-        # Handle terms
-        if isinstance(terms, str):
-            self.terms = [term.strip() for term in terms.split(',')]
-        else:
-            self.terms = terms
-        # Check if the number of terms is greater than the max_terms parameter
-        if len(self.terms) > self.config['api_parameters']['all']['max_terms']:
-            raise ValueError(f"Number of search terms ({len(self.terms)}) exceeds the maximum allowed ({self.config['api_parameters']['all']['max_terms']})")
-        self.term_string = ','.join(self.terms)
+from gtrend_api_tools.search_specs import DateRange, SearchSpec
 
 class API_Call:
     """
@@ -138,33 +89,25 @@ class API_Call:
 
     def search(
         self,
-        search_term: Union[str, List[str]],
-        start_date: Optional[Union[str, datetime]] = None,
-        end_date: Optional[Union[str, datetime]] = None
+        search_spec: Optional[SearchSpec] = None,
+        **kwargs
     ) -> 'API_Call':
         """
         Search Google Trends using the API.
         
         Args:
-            search_term (Union[str, List[str]]): The search term(s) to look up in Google Trends
-            start_date (Optional[Union[str, datetime]]): Start date for the search
-            end_date (Optional[Union[str, datetime]]): End date for the search
+            search_spec (Optional[SearchSpec]): Pre-configured search specification
+            **kwargs: Arguments passed to SearchSpec constructor (search_term, start_date, end_date, date_range, granularity, verbose)
             
         Returns:
             API_Call: Returns self for method chaining. The raw data is stored in self.raw_data
         """
-        # Create SearchSpec instance
-        search_spec = SearchSpec(
-            terms=search_term,
-            start_date=start_date,
-            end_date=end_date,
-            granularity=self.granularity,
-            verbose=self.verbose
-        )
-        
-
-        # Set as current search_spec
-        self.search_spec = search_spec
+        if search_spec is not None and isinstance(search_spec, SearchSpec):
+            # Use provided search_spec directly
+            self.search_spec = search_spec
+        else:
+            # Pass all kwargs to SearchSpec constructor
+            self.search_spec = SearchSpec(**kwargs)
 
         return self
 

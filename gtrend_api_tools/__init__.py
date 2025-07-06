@@ -8,10 +8,11 @@ __version__ = "0.1.0_alpha"
 from .gtrend import Trends
 from .utils import (
     load_config,
-    get_index_granularity,
-    calculate_search_granularity,
-    save_to_csv
+    save_to_csv,
+    parse_date_str,
+    period_index_full_duration
 )
+from .search_specs import DateRange, SearchSpec
 from .APIs import (
     available_apis,
     get_free_apis,
@@ -22,9 +23,11 @@ from .APIs import (
 __all__ = [
     'Trends',
     'load_config',
-    'get_index_granularity',
-    'calculate_search_granularity',
     'save_to_csv',
+    'parse_date_str',
+    'period_index_full_duration',
+    'DateRange',
+    'SearchSpec',
     'available_apis',
     'get_free_apis',
     'get_paid_apis',
