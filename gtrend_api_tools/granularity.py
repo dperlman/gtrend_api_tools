@@ -2,7 +2,8 @@ from typing import Dict, Union, Optional, Any, Tuple
 from datetime import datetime, timedelta
 import pandas as pd
 import numpy as np
-from gtrend_api_tools.utils import load_config, _print_if_verbose, parse_date_str, diff_hour, diff_day, diff_week, diff_month
+from gtrend_api_tools.utils import load_config, _print_if_verbose, diff_hour, diff_day, diff_week, diff_month
+from gtrend_api_tools.date_strings import parse_date_str
 import math
 
 class GranularityManager:

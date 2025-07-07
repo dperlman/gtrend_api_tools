@@ -8,7 +8,6 @@ import pandas as pd
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Callable, Union, Dict, Tuple, Any, List
 import yaml
-from dateutil.parser import parse, ParserError
 from types import SimpleNamespace
 import appdirs
 import shutil
@@ -16,14 +15,7 @@ import importlib.resources
 from pathlib import Path
 
 
-# default datetime object for parser is january 1 of current year and has hour zero
-CURRENT_DEFAULT_DT = datetime.now(timezone.utc).replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
 
-def parse_date_str(date_str: str) -> datetime:
-    """
-    Parse a date string into a datetime object using the CURRENT_DEFAULT_DT as the default.
-    """
-    return parse(date_str, default=CURRENT_DEFAULT_DT)
 
 def load_config() -> dict:
     """

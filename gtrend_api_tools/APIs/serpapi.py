@@ -114,6 +114,7 @@ class SerpApi(API_Call):
         # Transform the data into the standardized format
         self.data = []
         for entry in timeline:
+            print(entry['date'])
             standardized_entry = {
                 'date': DateRange(entry['date']).formatted_range_ymd,
                 'values': [
