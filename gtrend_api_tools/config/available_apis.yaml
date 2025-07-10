@@ -9,7 +9,7 @@ serpapi:
   description: Uses SerpAPI service with direct HTTP requests
 
 serpwow:
-  class: SerpWow
+  class: Serpwow
   type: paid
   description: Uses SerpWow service
 

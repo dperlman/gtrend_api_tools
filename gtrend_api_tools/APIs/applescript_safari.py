@@ -11,7 +11,7 @@ from gtrend_api_tools.APIs.base_classes import API_Call
 import pandas as pd
 from gtrend_api_tools.utils import _print_if_verbose
 from gtrend_api_tools.search_specs import DateRange
-from gtrend_api_tools.date_strings import cleanup_date_str, get_date_range_start
+from gtrend_api_tools.date_strings import cleanup_date_str, standardize_date_range_start
 import json
 import unicodedata
 
@@ -639,7 +639,7 @@ class ApplescriptSafari(API_Call):
                     
             if values:  # Only add entries that have valid values
                 standardized_entry = {
-                    'date': get_date_range_start(date_str),
+                    'date': standardize_date_range_start(date_str),
                     'values': values
                 }
                 data.append(standardized_entry)

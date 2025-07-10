@@ -6,7 +6,7 @@ import pandas as pd
 import unicodedata
 from gtrend_api_tools.APIs.base_classes import API_Call
 from gtrend_api_tools.search_specs import SearchSpec, DateRange
-from gtrend_api_tools.date_strings import cleanup_date_str, get_date_range_start
+from gtrend_api_tools.date_strings import cleanup_date_str, standardize_date_range_start
 
 class SerpApi(API_Call):
     def __init__(
@@ -118,7 +118,7 @@ class SerpApi(API_Call):
         for entry in timeline:
             raw_date_list.append(cleanup_date_str(entry['date']))
             standardized_entry = {
-                'date': get_date_range_start(entry['date']),
+                'date': standardize_date_range_start(entry['date']),
                 'values': [
                     {
                         'value': item['extracted_value'],

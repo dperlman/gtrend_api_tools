@@ -9,7 +9,14 @@ def parse_date_str(date_str: str) -> datetime:
     """
     Parse a date string into a datetime object using the CURRENT_DEFAULT_DT as the default.
     """
-    return parse(date_str, default=CURRENT_DEFAULT_DT)
+    try:
+        parsed_date = parse(date_str, default=CURRENT_DEFAULT_DT)
+    except ValueError:
+        print(f"Error parsing date string: {date_str} trying again with dateparser.parse")
+        import dateparser
+        tz = CURRENT_DEFAULT_DT.strftime('%Z')
+        parsed_date = dateparser.parse(date_str, settings={'TIMEZONE': tz})
+    return parsed_date
 
 
 def split_date_range_str(clean_date_str: str) -> tuple:
@@ -86,12 +93,20 @@ def split_date_range_str(clean_date_str: str) -> tuple:
         start_date = clean_date_str
     return start_date, end_date 
 
+def standardize_date_format(date_str: str) -> str:
+    """
+    Standardize the date format to YYYY-MM-DD.
+    """
+    cleaned_date_str = cleanup_date_str(date_str)
+    date_dt = parse_date_str(cleaned_date_str)
+    return date_dt.strftime("%Y-%m-%d")
 
-def get_date_range_start(date_str: str) -> str:
+def standardize_date_range_start(date_str: str) -> str:
     """
     Get the start date from a date range string.
     """
-    return split_date_range_str(date_str)[0]
+    start_date_str = split_date_range_str(cleanup_date_str(date_str))[0]
+    return standardize_date_format(start_date_str)
 
 def standardize_date_index(date_list: list) -> list:
     """
@@ -100,7 +115,9 @@ def standardize_date_index(date_list: list) -> list:
     parsing once and it broke everything. This way I can change the logic of how our standardize_data method works
     in one central place.
     """
-    standard_date_list = [split_date_range_str(cleanup_date_str(date))[0] for date in date_list]
+    standard_date_list = [None] * len(date_list)
+    for i, date in enumerate(date_list):
+        standard_date_list[i] = standardize_date_range_start(date)
     return standard_date_list
 
 def cleanup_date_str(date_str: str) -> str:

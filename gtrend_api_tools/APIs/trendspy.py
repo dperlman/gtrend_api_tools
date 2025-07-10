@@ -5,7 +5,7 @@ from typing import Union, List, Optional, Dict, Any
 from gtrend_api_tools.APIs.api_utils import change_tor_identity
 from gtrend_api_tools.search_specs import DateRange
 from gtrend_api_tools.APIs.base_classes import API_Call
-from gtrend_api_tools.date_strings import cleanup_date_str, get_date_range_start
+from gtrend_api_tools.date_strings import cleanup_date_str, standardize_date_range_start
 import pandas as pd
 
 class TrendsPy(API_Call):
@@ -143,7 +143,7 @@ class TrendsPy(API_Call):
         for date, values in self.raw_data.items():
             raw_date_list.append(cleanup_date_str(date))
             standardized_entry = {
-                'date': get_date_range_start(date),
+                'date': standardize_date_range_start(date),
                 'values': [
                     {
                         'value': value,

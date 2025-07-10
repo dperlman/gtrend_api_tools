@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from typing import Union, List, Optional, Dict, Any
 from gtrend_api_tools.search_specs import DateRange
 from gtrend_api_tools.APIs.base_classes import API_Call
-from gtrend_api_tools.date_strings import cleanup_date_str, get_date_range_start
+from gtrend_api_tools.date_strings import cleanup_date_str, standardize_date_range_start
 import pandas as pd
 
 class Serpwow(API_Call):
@@ -111,7 +111,7 @@ class Serpwow(API_Call):
         for entry in timeline:
             raw_date_list.append(cleanup_date_str(entry['date_formatted']))
             standardized_entry = {
-                'date': get_date_range_start(entry['date_formatted']),
+                'date': standardize_date_range_start(entry['date_formatted']),
                 'values': [
                     {
                         'value': item['value'],

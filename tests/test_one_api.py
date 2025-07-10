@@ -1,7 +1,7 @@
 import pytest
 from datetime import datetime
 
-API_TO_TEST = 'dummy_api'
+API_TO_TEST = 'serpwow'
 
 @pytest.mark.parametrize('api_key,api_instance', [(API_TO_TEST, API_TO_TEST)], indirect=True)
 def test_api_search_history(api_instance, test_terms, test_dates):
@@ -50,7 +50,10 @@ def test_api_single_term(api_instance, test_terms, test_dates):
     search_term = test_terms['term1']
     start_date = test_dates['short_range']['start']
     end_date = test_dates['short_range']['end']
-    api_instance.search(search_term=search_term, start_date=start_date, end_date=end_date).standardize_data()
+    api_instance.search(search_term=search_term, start_date=start_date, end_date=end_date)
+    #print(f"api_instance.raw_data: {api_instance.raw_data}")
+    api_instance.standardize_data()
+    #print(f"api_instance.data: {api_instance.data}")
     
     # Check standardized data structure
     assert api_instance.data
@@ -98,6 +101,7 @@ def test_api_datetime_input(api_instance, test_terms, test_dates):
     # Check standardized data structure
     assert api_instance.data
     # Check date range
+    #print([entry['date'] for entry in api_instance.data])
     dates = [datetime.strptime(entry['date'], "%Y-%m-%d") for entry in api_instance.data]
     assert min(dates) >= start_date
     assert max(dates) <= end_date
