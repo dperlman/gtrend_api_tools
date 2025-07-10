@@ -11,6 +11,7 @@ from gtrend_api_tools.APIs.base_classes import API_Call
 import pandas as pd
 from gtrend_api_tools.utils import _print_if_verbose
 from gtrend_api_tools.search_specs import DateRange
+from gtrend_api_tools.date_strings import cleanup_date_str, get_date_range_start
 import json
 import unicodedata
 
@@ -187,6 +188,7 @@ class ApplescriptSafari(API_Call):
         self.close_tabs = close_tabs
         self.poll_max_tries = poll_max_tries
         self.poll_wait_time = poll_wait_time
+
 
     def open_url_in_safari(self, url: str, load_delay: int = 0) -> None:
         """
@@ -427,7 +429,7 @@ class ApplescriptSafari(API_Call):
         
         return []
 
-    def _close_safari_tab(self) -> None:
+    def _close_front_safari_tab(self) -> None:
         """
         Close the first tab of the first Safari window using AppleScript.
         """
@@ -439,14 +441,54 @@ class ApplescriptSafari(API_Call):
             end repeat
         end tell
         tell application "Safari"
+            activate
             if (count of every tab of window 1) > 1 then
                 set current_tab_index to index of current tab of window 1
+                --display dialog "current_tab_index: " & current_tab_index
                 close tab current_tab_index of window 1
             end if
         end tell
         '''
         try:
             result = applescript.run(script)
+            # print(f"Result.err: {result.err}")
+            # print(f"Result.code: {result.code}")
+            # print(f"Result.out: {result.out}")
+            if result.code != 0:
+                self.print_func(f"Error closing Safari tab: {result.err}")
+        except Exception as e:
+            self.print_func(f"Error executing AppleScript to close tab: {str(e)}")
+
+    def _close_all_safari_tabs(self) -> None:
+        """
+        Close all tabs of the first Safari window using AppleScript.
+        """
+        script = '''
+        tell application "System Events"
+            repeat 20 times
+                if exists (window 1 of process "Safari") then exit repeat
+                delay 1
+            end repeat
+        end tell
+        set AppleScript's text item delimiters to ", "
+        tell application "Safari"
+            activate
+            --display dialog "applescript_safari: _close_all_safari_tabs"
+            --display dialog "Tabs of window 1: " & (get index of every tab of window 1 as string)
+            --log "applescript_safari: _close_all_safari_tabs"
+            --log "count of every tab of window 1: " & (count of every tab of window 1)
+            --if (count of every tab of window 1) > 0 then
+                close every tab of window 1
+                --close every tab of every window
+            --end if
+            --display dialog "Tabs of window 1: " & (get index of every tab of window 1 as string)
+        end tell
+        '''
+        try:
+            result = applescript.run(script)
+            # print(f"Result.err: {result.err}")
+            # print(f"Result.code: {result.code}")
+            # print(f"Result.out: {result.out}")
             if result.code != 0:
                 self.print_func(f"Error closing Safari tab: {result.err}")
         except Exception as e:
@@ -481,11 +523,7 @@ class ApplescriptSafari(API_Call):
             self._auth_session.login()
         if not self._auth_session.is_authenticated:
             raise Exception("Google authentication login failed")
-        
-        # Close tab if configured to do so
-        if self.close_tabs:
-            self._close_safari_tab()
-            
+
         self.print_func(f"Sending ApplescriptSafari search request:")
         self.print_func(f"  Search term: {spec.term_string}")
         self.print_func(f"  Start date: {spec.start_date}")
@@ -522,7 +560,13 @@ class ApplescriptSafari(API_Call):
         # Store the raw HTML data
         self.raw_data = html_content
         
-        self.print_func("  Search successful!")
+        self.print_func("Search successful!")
+        
+        # Close tab if configured to do so
+        if self.close_tabs:
+            print("Closing front Safari tab")
+            self._close_front_safari_tab()
+
         return self
 
     def standardize_data(self) -> 'ApplescriptSafari':
@@ -537,7 +581,7 @@ class ApplescriptSafari(API_Call):
             raise ValueError("No raw data available. Call search() first.")
             
         # Parse the HTML using BeautifulSoup
-        soup = BeautifulSoup(self._raw_data_history[-1], 'html.parser')
+        soup = BeautifulSoup(self.raw_data, 'html.parser')
         
         # Find the table
         table = soup.find('table')
@@ -562,7 +606,8 @@ class ApplescriptSafari(API_Call):
             search_terms = [search_terms]
             
         # Transform the data into the standardized format
-        standardized_data = []
+        raw_date_list = []
+        data = []
         for row in rows:
             cells = row.find_all('td')
             if len(cells) != len(headers):
@@ -570,6 +615,7 @@ class ApplescriptSafari(API_Call):
                 
             # Parse the date
             date_str = cells[0].text.strip()
+            raw_date_list.append(cleanup_date_str(date_str))
             # try:
             #     # Remove any special characters and parse the date
             #     date_str = date_str.replace('\u202a', '').replace('\u202c', '')  # Remove LTR/RTL marks
@@ -593,15 +639,17 @@ class ApplescriptSafari(API_Call):
                     
             if values:  # Only add entries that have valid values
                 standardized_entry = {
-                    'date': DateRange(date_str).formatted_range_ymd,
+                    'date': get_date_range_start(date_str),
                     'values': values
                 }
-                standardized_data.append(standardized_entry)
+                data.append(standardized_entry)
         
-        if not standardized_data:
+        if not data:
             raise ValueError("No valid data found in table")
             
-        self._data_history.append(standardized_data)
+        self.data = data
+        self.print_func(f"Standardized data length: {len(data)}")
+        self.raw_date_list = raw_date_list
         return self
 
 def get_escaped_js_for_text_search_v3(
@@ -802,6 +850,12 @@ if __name__ == "__main__":
     test_configs = [
         {
             "name": "Google Trends Test",
+            "search_terms": ["coffee", "tea"],
+            "start_date": "2024-04-30",
+            "end_date": "2024-05-30"
+        },
+        {
+            "name": "Google Trends Test",
             "search_terms": ["car", "truck"],
             "start_date": "2024-04-30",
             "end_date": "2024-05-30"
@@ -809,18 +863,24 @@ if __name__ == "__main__":
     ]
     
     # Run each test configuration
+    # uncomment this to run all tests in the same instance of the API class
+    # safari = ApplescriptSafari(print_func=print, close_tabs=True)
+    safari = ApplescriptSafari(close_tabs=True)
+
     for config in test_configs:
         print(f"\n{'='*50}")
         print(f"Running {config['name']}")
         print(f"{'='*50}")
         
-        safari = ApplescriptSafari(print_func=print)
+        # uncomment this to run each test in a new instance of the API class
+        # safari = ApplescriptSafari(print_func=print)
+
         result = safari.search(
             search_term=config["search_terms"],
             start_date=config["start_date"],
             end_date=config["end_date"]
         ).standardize_data().data
         
-        print("\nResults:")
-        print(result)
+        print(f"Results: {len(result)} records.")
+        #print(result)
 

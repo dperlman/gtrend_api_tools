@@ -2,9 +2,6 @@ import os
 import sys
 import time
 
-# Add the project root directory to the Python path
-project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, project_root)
 
 from gtrend_api_tools import Trends
 from gtrend_api_tools import load_config
@@ -72,7 +69,7 @@ def main():
     verbose = config.get('verbose', 'INFO')
 
     # API to use
-    api = 'applescript_safari'
+    api = 'dummy_api'
     
     # Initialize Trends instance with smart_tpy mode
     trends = Trends(

@@ -93,6 +93,15 @@ def get_date_range_start(date_str: str) -> str:
     """
     return split_date_range_str(date_str)[0]
 
+def standardize_date_index(date_list: list) -> list:
+    """
+    Standardize a list of date strings.
+    Used in every API's standardize_data method because I updated date string
+    parsing once and it broke everything. This way I can change the logic of how our standardize_data method works
+    in one central place.
+    """
+    standard_date_list = [split_date_range_str(cleanup_date_str(date))[0] for date in date_list]
+    return standard_date_list
 
 def cleanup_date_str(date_str: str) -> str:
     """

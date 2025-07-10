@@ -40,6 +40,9 @@ venv.bak/
 *.csv
 testdata/
 testdata/*
+tests/test_outputs
+tests/test_outputs/*
+test/old tests
 
 # Jupyter Notebook
 # .ipynb_checkpoints

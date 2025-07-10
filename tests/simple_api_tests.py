@@ -1,20 +1,22 @@
 import os
 import sys
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from APIs import SerpApi, SerpWow, TrendsPy, SearchApi, SerpApiPy, ApplescriptSafari, DummyApi
+from gtrend_api_tools.APIs import SerpApi, Serpwow, TrendsPy, SearchApi, SerpApiPython, ApplescriptSafari, DummyApi
 from datetime import datetime
-from utils import load_config, _print_if_verbose
+from gtrend_api_tools.utils import load_config, _print_if_verbose
 import json
 import traceback
 
-def test_api(api_instance, api_name, start_date, end_date, verbose: bool = False):
+CLOSE_TABS = True # Close tabs after each search. This is useful for ApplescriptSafari, but not for other APIs.
+#### Note that if we ever implement a corresponding browser-based API for Windows or Linux,
+#### we will want to make sure to also add this option for those.
+
+def test_api(api_instance, api_name, start_date, end_date, search_term, verbose: bool = False):
     """Test an API instance with the specified parameters and save results to files."""
     print(f"\n{'='*50}")
     print(f"Testing {api_name}")
     print(f"{'='*50}")
     
-    search_term = "coffee,tea"
     current_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     
     try:
@@ -74,19 +76,28 @@ def main():
 
     
     # Initialize API instances with their respective keys
+    applescript_safari_instance = ApplescriptSafari(verbose=verbose, close_tabs=CLOSE_TABS)
 
-    apis = {
+    apis = [
         #"SerpApi": SerpApi(api_key=config.get('api_keys', {}).get('serpapi'), verbose=verbose),
         #"SerpWow": SerpWow(api_key=config.get('api_keys', {}).get('serpwow'), verbose=verbose),
         #"SearchApi": SearchApi(api_key=config.get('api_keys', {}).get('searchapi'), verbose=verbose),
-        "ApplescriptSafari": ApplescriptSafari(verbose=verbose),
+        {"name": "ApplescriptSafari", "api": applescript_safari_instance, "search_term": "coffee,tea"},
+        {"name": "ApplescriptSafari", "api": applescript_safari_instance, "search_term": "car,truck"},
         #"TrendsPy": TrendsPy(verbose=verbose, tor_control_password=tor_control_password, proxy="127.0.0.1:9150", change_identity=True),
         #"DummyApi": DummyApi(verbose=verbose)
-    }
+    ]
 
     # Test each API
-    for api_name, api_instance in apis.items():
-        test_api(api_instance, api_name, start_date, end_date, verbose)
+    for api in apis:
+        print(f"Testing {api['name']} with search term: {api['search_term']}")
+        test_api(api["api"], api["name"], start_date, end_date, api["search_term"], verbose)
+
+    # Close all Safari tabs if we've tested ApplescriptSafari
+    if applescript_safari_instance.search_history:
+        print("Closing all Safari tabs")
+        applescript_safari_instance._close_all_safari_tabs() # this is a method of the ApplescriptSafari class
+        print("All Safari tabs closed")
 
 if __name__ == "__main__":
     main() 

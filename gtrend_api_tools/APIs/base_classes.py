@@ -4,6 +4,7 @@ import pandas as pd
 from gtrend_api_tools.utils import _print_if_verbose, load_config
 from gtrend_api_tools.APIs.api_utils import standard_dict_to_df
 from gtrend_api_tools.search_specs import DateRange, SearchSpec
+from gtrend_api_tools.date_strings import cleanup_date_str
 
 class API_Call:
     """
@@ -114,15 +115,19 @@ class API_Call:
     def standardize_data(self) -> 'API_Call':
         """
         Standardize the raw data into a common format.
-        For now, simply copies raw_data to data.
+        Copies raw_data to data and extracts raw_date_list from the standardized format.
         
         Returns:
             API_Call: Returns self for method chaining
         """
-        if not self._raw_data_history:
-            raise ValueError("No raw data available. Call search() first.")
-            
-        self._data_history.append(self._raw_data_history[-1])
+        self.data = self.raw_data
+        
+        # Extract raw_date_list from the standardized data format
+        raw_date_list = []
+        for entry in self.raw_data:
+            raw_date_list.append(cleanup_date_str(entry['date']))
+        self.raw_date_list = raw_date_list
+        
         return self
 
     def make_dataframe(self) -> 'API_Call':
@@ -133,10 +138,7 @@ class API_Call:
         Returns:
             API_Call: Returns self for method chaining
         """
-        if not self._data_history:
-            raise ValueError("No standardized data available. Call standardize_data() first.")
-            
-        self._dataframe_history.append(standard_dict_to_df(self._data_history[-1]))
+        self.dataframe = standard_dict_to_df(self.data)
         return self
 
     @property
@@ -254,15 +256,15 @@ class API_Call:
         """
         return self._search_history
 
-    @search_history.setter
-    def search_history(self, value: Any) -> None:
-        """
-        Add a search term to the search history.
+    # @search_history.setter
+    # def search_history(self, value: Any) -> None:
+    #     """
+    #     Add a search term to the search history.
         
-        Args:
-            value (Any): Search term to add to history
-        """
-        self._search_history.append(value)
+    #     Args:
+    #         value (Any): Search term to add to history
+    #     """
+    #     self._search_history.append(value)
 
     @property
     def search_spec(self) -> SearchSpec:

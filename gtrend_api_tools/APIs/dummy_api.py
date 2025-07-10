@@ -4,6 +4,7 @@ import pandas as pd
 from gtrend_api_tools.granularity import GranularityManager
 from gtrend_api_tools.APIs.base_classes import API_Call
 from gtrend_api_tools.APIs.api_utils import sinc_data
+from gtrend_api_tools.date_strings import cleanup_date_str
 import numpy as np
 
 class DummyApi(API_Call):
@@ -73,7 +74,7 @@ class DummyApi(API_Call):
         dates = [spec.start_date_dt + timedelta(days=i) for i in range(days)]
         
         # Generate data in the format expected by standard_dict_to_df
-        self.data = []
+        data = []
         
         if self.fill_value == "sinc":
             # Generate N sinc waves (one for each term)
@@ -101,7 +102,7 @@ class DummyApi(API_Call):
                         for j, term in enumerate(spec.terms)
                     ]
                 }
-                self.data.append(entry)
+                data.append(entry)
         else:
             # Fill with constant value
             for date in dates:
@@ -115,9 +116,10 @@ class DummyApi(API_Call):
                         for term in spec.terms
                     ]
                 }
-                self.data.append(entry)
+                data.append(entry)
         
         # Store the same data as raw_data for consistency
-        self.raw_data = self.data
+        self.raw_data = data
+        
         
         return self 

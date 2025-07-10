@@ -6,6 +6,7 @@ import pandas as pd
 import unicodedata
 from gtrend_api_tools.search_specs import DateRange
 from gtrend_api_tools.APIs.base_classes import API_Call
+from gtrend_api_tools.date_strings import cleanup_date_str, get_date_range_start
 
 class SerpApiPython(API_Call):
     def __init__(
@@ -108,10 +109,12 @@ class SerpApiPython(API_Call):
         timeline = self.raw_data['interest_over_time']['timeline_data']
         
         # Transform the data into the standardized format
-        self.data = []
+        raw_date_list = []
+        data = []
         for entry in timeline:
+            raw_date_list.append(cleanup_date_str(entry['date']))
             standardized_entry = {
-                'date': DateRange(entry['date']).formatted_range_ymd,
+                'date': get_date_range_start(entry['date']),
                 'values': [
                     {
                         'value': item['extracted_value'],
@@ -120,8 +123,10 @@ class SerpApiPython(API_Call):
                     for item in entry['values']
                 ]
             }
-            self.data.append(standardized_entry)
-            
+            data.append(standardized_entry)
+        self.print_func(f"Standardized data length: {len(data)}")
+        self.raw_date_list = raw_date_list
+        self.data = data
         return self
 
 # def search_serpapi(

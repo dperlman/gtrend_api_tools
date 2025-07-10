@@ -5,6 +5,7 @@ from typing import Union, List, Optional, Dict, Any
 from gtrend_api_tools.APIs.api_utils import change_tor_identity
 from gtrend_api_tools.search_specs import DateRange
 from gtrend_api_tools.APIs.base_classes import API_Call
+from gtrend_api_tools.date_strings import cleanup_date_str, get_date_range_start
 import pandas as pd
 
 class TrendsPy(API_Call):
@@ -137,11 +138,12 @@ class TrendsPy(API_Call):
             raise ValueError("Raw data is not in the expected format")
             
         # Transform the data into the standardized format
-        self.data = []
+        raw_date_list = []
+        data = []
         for date, values in self.raw_data.items():
-            date_range = DateRange.from_str(date)
+            raw_date_list.append(cleanup_date_str(date))
             standardized_entry = {
-                'date': date_range.formatted_range_ymd,
+                'date': get_date_range_start(date),
                 'values': [
                     {
                         'value': value,
@@ -150,8 +152,10 @@ class TrendsPy(API_Call):
                     for query, value in values.items()
                 ]
             }
-            self.data.append(standardized_entry)
-            
+            data.append(standardized_entry)
+        self.print_func(f"Standardized data length: {len(data)}")
+        self.raw_date_list = raw_date_list
+        self.data = data
         return self
 
 # def search_trendspy(**kwargs) -> Union[pd.DataFrame, Dict[str, Any]]:

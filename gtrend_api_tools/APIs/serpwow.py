@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 from typing import Union, List, Optional, Dict, Any
 from gtrend_api_tools.search_specs import DateRange
 from gtrend_api_tools.APIs.base_classes import API_Call
+from gtrend_api_tools.date_strings import cleanup_date_str, get_date_range_start
 import pandas as pd
 
 class Serpwow(API_Call):
@@ -105,11 +106,12 @@ class Serpwow(API_Call):
         timeline = self.raw_data['trends_interest_over_time']['data']
         
         # Transform the data into the standardized format
-        self.data = []
+        raw_date_list = []
+        data = []
         for entry in timeline:
-            dr = DateRange(entry['date_formatted'])
+            raw_date_list.append(cleanup_date_str(entry['date_formatted']))
             standardized_entry = {
-                'date': dr.formatted_range_ymd,
+                'date': get_date_range_start(entry['date_formatted']),
                 'values': [
                     {
                         'value': item['value'],
@@ -118,8 +120,10 @@ class Serpwow(API_Call):
                     for item in entry['values']
                 ]
             }
-            self.data.append(standardized_entry)
-            
+            data.append(standardized_entry)
+        self.print_func(f"Standardized data length: {len(data)}")
+        self.raw_date_list = raw_date_list
+        self.data = data
         return self
 
 # def search_serpwow(**kwargs) -> Union[pd.DataFrame, Dict[str, Any]]:
