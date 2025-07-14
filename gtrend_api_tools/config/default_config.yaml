@@ -2,6 +2,8 @@ api_keys:
   serpapi: "76f3ea1f6758054f7bb79457102d937bc1dff7ae4a1ecc98e6a5751530a11824"
   serpwow: "063CF8C35D1E42FF96E7262A2AD04C00"
   searchapi: "Ci1r51NbstLbdH8F2KVEh6jT"
+  brightdata: "8153a4e7432515d6b8ac4e7d742ac88f4dad3be78f6ca025ef6fb51dcd3a1b4e"
+  #brightdata: "ac18382f-402c-4688-8243-594b62556847"
 
 tor:
   control_password: "controlpass" 
@@ -14,7 +16,7 @@ api_parameters:
 
 api_modes:
   - name: "trendspy"
-    description: "trendspy only"
+    description: "trendspy"
     api_order:
       - trendspy
 
@@ -22,6 +24,11 @@ api_modes:
     description: "serpapi"
     api_order:
       - serpapi
+
+  - name: "brightdata"
+    description: "brightdata"
+    api_order:
+      - brightdata
 
   - name: "serpwow"
     description: "serpwow"

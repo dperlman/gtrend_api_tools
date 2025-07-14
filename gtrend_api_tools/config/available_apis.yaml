@@ -8,6 +8,11 @@ serpapi:
   type: paid
   description: Uses SerpAPI service with direct HTTP requests
 
+brightdata:
+  class: Brightdata
+  type: paid
+  description: Uses Brightdata service
+
 serpwow:
   class: Serpwow
   type: paid

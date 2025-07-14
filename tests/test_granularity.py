@@ -169,8 +169,8 @@ def test_calculate_search_granularity_weekly(granularity_manager):
     result = granularity_manager.calculate_search_granularity(start_date, end_date)
     len_result_dt_index = len(result['datetime_index'])
     len_result_per_index = len(result['period_index'])
-    print(result['period_index'])
-    print(result['datetime_index'])
+    #print(result['period_index'])
+    #print(result['datetime_index'])
     # five year range should give weekly granularity
     assert result['granularity'] == 'W'
     assert len_result_dt_index == 262  # timedelta of given range is 261 days, so 262 periods

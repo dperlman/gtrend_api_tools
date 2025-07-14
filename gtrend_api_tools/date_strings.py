@@ -12,85 +12,147 @@ def parse_date_str(date_str: str) -> datetime:
     try:
         parsed_date = parse(date_str, default=CURRENT_DEFAULT_DT)
     except ValueError:
-        print(f"Error parsing date string: {date_str} trying again with dateparser.parse")
+        #print(f"Error parsing date string: {date_str} trying again with dateparser.parse")
         import dateparser
         tz = CURRENT_DEFAULT_DT.strftime('%Z')
         parsed_date = dateparser.parse(date_str, settings={'TIMEZONE': tz})
     return parsed_date
 
 
-def split_date_range_str(clean_date_str: str) -> tuple:
+def split_date_range_str(date_str: str) -> tuple:
     """
     Parse a (possibly somewhat messy) date range string into a start and end date.
     Args:
-        clean_date_str (str): The date string to parse. Must already be cleaned,
-        i.e. no messy unicode characters. (see clean_date_str)
+        date_str (str): The date string to parse. Will be cleaned,
+        i.e. removing messy unicode characters. (see cleanup_date_str)
     Returns:
         tuple: The start and end date as strings
     """
-    start_date = None
-    end_date = None
+    clean_date_str = cleanup_date_str(date_str)
+
+    # test for cases like
+    #  2020-01-01T14:30:45 2020-01-07T14:30:45
+    #  2020-01-01T14:30 2020-01-07T14:30
+    #  2020-01-01T14 2020-01-07T14
+    # or
+    #  2020-01-01T14:30:45 - 2020-01-07T14:30:45
+    #  2020-01-01T14:30 - 2020-01-07T14:30
+    #  2020-01-01T14 - 2020-01-07T14
+    # with zero or more spaces around the - or single space
+    iso_datetime_match = re.search(
+        r'^(\d{4}-\d{2}-\d{2}T\d{2}(?::\d{2}(?::\d{2})?)?)\s*[- ]\s*(\d{4}-\d{2}-\d{2}T\d{2}(?::\d{2}(?::\d{2})?)?)$',
+        clean_date_str
+    )
+    if iso_datetime_match:
+        start_date, end_date = iso_datetime_match.groups()
+        return start_date, end_date
+
+    # test for cases like
+    #  01/01/2020T14:30:45 01/07/2020T14:30:45
+    #  01/01/2020T14:30 01/07/2020T14:30
+    #  01/01/2020T14 01/07/2020T14
+    # or
+    #  01/01/2020T14:30:45 - 01/07/2020T14:30:45
+    #  01/01/2020T14:30 - 01/07/2020T14:30
+    #  01/01/2020T14 - 01/07/2020T14
+    # with zero or more spaces around the - or single space
+    mdy_datetime_match = re.search(
+        r'^(\d{1,2}/\d{1,2}/\d{4}T\d{2}(?::\d{2}(?::\d{2})?)?)\s*[- ]\s*(\d{1,2}/\d{1,2}/\d{4}T\d{2}(?::\d{2}(?::\d{2})?)?)',
+        clean_date_str
+    )
+    if mdy_datetime_match:
+        start_date, end_date = mdy_datetime_match.groups()
+        return start_date, end_date
+
+    # test for cases like
+    #  2020-01-01 - 2020-01-07
+    #  2020-01-01 2020-01-07
+    # with zero or more spaces around the - or single space
+    iso_date_match = re.search(
+        r'^(\d{4}-\d{2}-\d{2})\s*[- ]\s*(\d{4}-\d{2}-\d{2})',
+        clean_date_str
+    )
+    if iso_date_match:
+        start_date, end_date = iso_date_match.groups()
+        return start_date, end_date
     
-    # test for case like "2020-01-01 - 2020-01-07 or 2020-01-01 2020-01-07"
-    if re.search(r'^\d{4}-\d{2}-\d{2}', clean_date_str):
-        # extract the ISO format date
-        start_date = re.search(r'^\d{4}-\d{2}-\d{2}', clean_date_str).group()
-        # delete the first date from the string
-        clean_date_str = clean_date_str.replace(start_date, '', 1).strip()
-        # now see if there is another one
-        if re.search(r'\d{4}-\d{2}-\d{2}', clean_date_str):
-            end_date = re.search(r'\d{4}-\d{2}-\d{2}', clean_date_str).group()
-            # delete the second date from the string
-            clean_date_str = clean_date_str.replace(end_date, '', 1).strip()
-    # test for case like "11/3/2021 - 11/10/2021"
-    elif re.search(r'\d{1,2}/\d{1,2}/\d{4}', clean_date_str):
-        start_date = re.search(r'\d{1,2}/\d{1,2}/\d{4}', clean_date_str).group()
-        # delete the first date from the string
-        clean_date_str = clean_date_str.replace(start_date, '', 1).strip()
-        # now see if there is another one
-        if re.search(r'\d{1,2}/\d{1,2}/\d{4}', clean_date_str):
-            end_date = re.search(r'\d{1,2}/\d{1,2}/\d{4}', clean_date_str).group()
-            # delete the second date from the string
-            clean_date_str = re.split(r'\d{1,2}/\d{1,2}/\d{4}', clean_date_str)[1].strip()
-    # test for case like "Jan 1-7, 2020"
-    elif re.search(r'\d+-\d+', clean_date_str):
-        parts = re.split(r'\d+-\d+', clean_date_str)
-        splitter = re.search(r'\d+-\d+', clean_date_str).group()
-        front_digits = re.search(r'\d+', splitter).group()
-        back_digits = re.search(r'-\d+', splitter).group().lstrip('-')
-        back_year = re.search(r'\d+$', parts[1]).group()
-        start_date = parts[0] + front_digits + ', ' + back_year
-        end_date = back_digits + parts[1]
-    # test for case like "Jan 1 - 7, 2020"
-    elif re.search(r'\d+\s*-\s*\d+', clean_date_str):
-        parts = re.split(r'\d+\s*-\s*\d+', clean_date_str)
-        splitter = re.search(r'\d+\s*-\s*\d+', clean_date_str).group()
-        front_digits = re.search(r'\d+', splitter).group()
-        back_digits = re.search(r'-\s*\d+', splitter).group().lstrip('-')
-        back_year = re.search(r'\d+$', parts[1]).group()
-        start_date = parts[0] + front_digits + ', ' + back_year
-        end_date = back_digits + parts[1]
-    # test for case like "Jan 1-Dec 7, 2020"
-    elif re.search(r'\d+-[a-zA-Z]+', clean_date_str):
-        parts = re.split(r'\d+-[a-zA-Z]+', clean_date_str)
-        splitter = re.search(r'\d+-[a-zA-Z]+', clean_date_str).group()
-        front_digits = re.search(r'\d+', splitter).group()
-        back_letters = re.search(r'-[a-zA-Z]+', splitter).group().lstrip('-')
-        back_year = re.search(r'\d+$', parts[1]).group()
-        start_date = parts[0] + front_digits + ', ' + back_year
-        end_date = back_letters + parts[1]
-    # search for case like "Jan 1 - Dec 7, 2020"
-    elif re.search(r'\d+\s*-\s*[a-zA-Z]+', clean_date_str):
-        parts = re.split(r'\d+\s*-\s*[a-zA-Z]+', clean_date_str)
-        splitter = re.search(r'\d+\s*-\s*[a-zA-Z]+', clean_date_str).group()
-        front_digits = re.search(r'\d+', splitter).group()
-        back_letters = re.search(r'-\s*[a-zA-Z]+', splitter).group().lstrip('-').strip()
-        back_year = re.search(r'\d+$', parts[1]).group()
-        start_date = parts[0] + front_digits + ', ' + back_year
-        end_date = back_letters + parts[1]
-    else:
-        # if we get here we can assume there's only one date.
-        start_date = clean_date_str
+    # test for cases like
+    #  11/3/2021 - 11/10/2021
+    #  11/3/2021 11/10/2021
+    # with zero or more spaces around the - or single space
+    mdy_date_match = re.search(
+        r'^(\d{1,2}/\d{1,2}/\d{4})\s*[- ]\s*(\d{1,2}/\d{1,2}/\d{4})',
+        clean_date_str
+    )
+    if mdy_date_match:
+        start_date, end_date = mdy_date_match.groups()
+        return start_date, end_date
+            
+    # # test for cases like
+    # #  Jan 1-7, 2020
+    # #  Jan 1-7 2020
+    # # with no spaces around the "-"
+    # if re.search(r'\w+\s+\d+-\d+,?\s+\d+', clean_date_str):
+    #     parts        = re.split (r'\d+-\d+', clean_date_str)
+    #     splitter     = re.search(r'\d+-\d+', clean_date_str).group()
+    #     front_digits = re.search(r'\d+', splitter).group()
+    #     back_digits  = re.search(r'-\d+', splitter).group().lstrip('-')
+    #     front_month  = re.search(r'\w+', parts[0]).group()
+    #     back_year    = re.search(r'\d+$', parts[1]).group()
+    #     start_date = front_month + ' ' + front_digits + ', ' + back_year
+    #     end_date = front_month + ' ' + back_digits + ', ' + back_year
+    #     return start_date, end_date
+
+    # test for cases like
+    #  Jan 1 - 7, 2020
+    #  Jan 1 - 7 2020
+    #  Jan 1  -  7, 2020
+    # with zero or more spaces around the "-"
+    if re.search(r'^\w+\s+\d+\s*-\s*\d+[, ]+\d+', clean_date_str):
+        parts        = re.split (r'\d+\s*-\s*\d+', clean_date_str)
+        splitter     = re.search(r'\d+\s*-\s*\d+', clean_date_str).group()
+        front_day    = re.search(r'\d+', splitter).group()
+        back_day     = re.search(r'-\s*\d+', splitter).group().lstrip('-').strip()
+        front_month  = re.search(r'\w+', parts[0]).group()
+        back_year    = re.search(r'\d+$', parts[1]).group()
+        start_date = front_month + ' ' + front_day + ', ' + back_year
+        end_date = front_month + ' ' + back_day + ', ' + back_year
+        return start_date, end_date
+
+    # # test for cases like
+    # #  Jan 1-Dec 7, 2020
+    # #  Jan 1-Dec 7 2020
+    # # with no spaces around the "-"
+    # if re.search(r'\d+-[a-zA-Z]+', clean_date_str):
+    #     parts = re.split(r'\d+-[a-zA-Z]+', clean_date_str)
+    #     splitter = re.search(r'\d+-[a-zA-Z]+', clean_date_str).group()
+    #     front_digits = re.search(r'\d+', splitter).group()
+    #     back_letters = re.search(r'-[a-zA-Z]+', splitter).group().lstrip('-')
+    #     back_year = re.search(r'\d+$', parts[1]).group()
+    #     start_date = parts[0] + front_digits + ', ' + back_year
+    #     end_date = parts[0] + back_letters + back_year
+    #     return start_date, end_date
+    
+    # search for cases like
+    #  Jan 1 - Dec 7, 2020
+    #  Jan 1 - Dec 7 2020
+    #  Jan 1  -  Dec 7, 2020
+    # with one or more spaces around the "-"
+    if re.search(r'^\w+\s+\d+\s*-\s*\w+\s+\d+[, ]+\d+', clean_date_str):
+        parts        = re.split (r'\d+\s*-\s*\w+', clean_date_str)
+        splitter     = re.search(r'\d+\s*-\s*\w+', clean_date_str).group()
+        front_month  = re.search(r'^\w+', parts[0]).group()
+        front_day    = re.search(r'\d+', splitter).group()
+        back_month   = re.search(r'-\s*\w+', splitter).group().lstrip('-').strip()
+        back_day     = re.search(r'\d+', parts[1]).group()
+        back_year    = re.search(r'\d+$', parts[1]).group()
+        start_date = front_month + ' ' + front_day + ', ' + back_year
+        end_date = back_month + ' ' + back_day + ', ' + back_year
+        return start_date, end_date
+    
+    # if we get here we can assume there's only one date.
+    start_date = clean_date_str
+    end_date = None
     return start_date, end_date 
 
 def standardize_date_format(date_str: str) -> str:
@@ -143,3 +205,58 @@ def cleanup_date_str(date_str: str) -> str:
     date_str_unicode_normalized = re.sub(r'\s+', ' ', date_str_unicode_normalized)
     date_str_unicode_normalized = date_str_unicode_normalized.strip()
     return date_str_unicode_normalized 
+
+def get_resolution_details(freq: str) -> tuple:
+    """
+    Get the resolution arguments from a frequency string.
+    The format strings are meant to be used to format date strings,
+    while the resolution arguments are meant to be used to replace the values in a datetime object.
+    NOTE: I don't think I'm going to use this.
+    Args:
+        freq (str): The frequency string.
+    Returns:
+        tuple: (dict: The resolution arguments,
+                str: The format string for YYYY-MM-DD,
+                str: The format string for MM/DD/YYYY)
+    """
+    res_args = {}
+    if freq == 's':
+        res_args['microsecond'] = 0
+        format_str_ymd = '%Y-%m-%dT%H:%M:%S'
+        format_str_mdy = '%m/%d/%YT%H:%M:%S'
+    if freq == 'm':
+        res_args['second'] = 0
+        res_args['microsecond'] = 0
+        format_str_ymd = '%Y-%m-%dT%H:%M'
+        format_str_mdy = '%m/%d/%YT%H:%M'
+    if freq == 'h':
+        res_args['minute'] = 0
+        res_args['second'] = 0
+        res_args['microsecond'] = 0
+        format_str_ymd = '%Y-%m-%dT%H'
+        format_str_mdy = '%m/%d/%YT%H'
+    if freq == 'D':
+        res_args['hour'] = 0
+        res_args['minute'] = 0
+        res_args['second'] = 0
+        res_args['microsecond'] = 0
+        format_str_ymd = '%Y-%m-%d'
+        format_str_mdy = '%m/%d/%Y'
+    if freq == 'M':
+        res_args['day'] = 0
+        res_args['hour'] = 0
+        res_args['minute'] = 0
+        res_args['second'] = 0
+        res_args['microsecond'] = 0
+        format_str_ymd = '%Y-%m'
+        format_str_mdy = '%m/%Y'
+    if freq == 'Y':
+        res_args['month'] = 0
+        res_args['day'] = 0
+        res_args['hour'] = 0
+        res_args['minute'] = 0
+        res_args['second'] = 0
+        res_args['microsecond'] = 0
+        format_str_ymd = '%Y'
+        format_str_mdy = '%Y'
+    return res_args, format_str_ymd, format_str_mdy

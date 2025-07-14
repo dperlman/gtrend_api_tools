@@ -9,6 +9,7 @@ import math
 class GranularityManager:
     """
     A class to manage granularity rules and calculations.
+    The actual rules are defined in the granularity_rules.yaml file.
     
     This class provides functionality for:
     - Managing granularity rules from configuration
@@ -98,48 +99,33 @@ class GranularityManager:
         """
         Create DateTimeIndex and PeriodIndex based on the given date range and granularity.
         
+        The granularity rules and their corresponding frequencies are defined in the 
+        granularity_rules.yaml configuration file.
+        
         Args:
             start_dt (datetime): Start date
             end_dt (datetime): End date
-            granularity (str): Time granularity code ('h', 'D', 'W', 'M')
+            granularity (str): Time granularity code (e.g., 'm', 'e', 'n', 'h', 'D', 'W', 'M')
+                             as defined in granularity_rules.yaml
             
         Returns:
             Tuple[pd.DatetimeIndex, pd.PeriodIndex]: A tuple containing the DateTimeIndex and PeriodIndex
             
         Raises:
-            ValueError: If granularity is not one of 'h', 'D', 'W', 'M'
+            ValueError: If granularity is not found in the granularity_rules.yaml configuration
         """
         if granularity not in self.rules:
             raise ValueError(f"Invalid granularity: {granularity}. Must be one of: {list(self.rules.keys())}")
         
-        hour_diff = diff_hour(start_dt, end_dt)
-        days_diff = diff_day(start_dt, end_dt)
-        weeks_diff = diff_week(start_dt, end_dt)
-        months_diff = diff_month(start_dt, end_dt)
-
-        if granularity == 'm':
-            _print_if_verbose(f"Hours difference: {hour_diff}", self.verbose)
-            period_index = pd.period_range(start=start_dt, end=end_dt, freq='min')
-        elif granularity == 'e':
-            _print_if_verbose(f"Hours difference: {hour_diff}", self.verbose)
-            period_index = pd.period_range(start=start_dt, end=end_dt, freq='8min')
-        elif granularity == 'n':
-            _print_if_verbose(f"Hours difference: {hour_diff}", self.verbose)
-            period_index = pd.period_range(start=start_dt, end=end_dt, freq='16min')
-        elif granularity == 'h':
-            _print_if_verbose(f"Hours difference: {hour_diff}", self.verbose)
-            period_index = pd.period_range(start=start_dt, end=end_dt, freq='h')
-        elif granularity == 'D':
-            _print_if_verbose(f"Days difference: {days_diff}", self.verbose)
-            period_index = pd.period_range(start=start_dt, end=end_dt, freq='D')
-        elif granularity == 'W':
-            _print_if_verbose(f"Weeks difference: {weeks_diff}", self.verbose)
-            period_index = pd.period_range(start=start_dt, end=end_dt, freq='W')
-        elif granularity == 'M':
-            _print_if_verbose(f"Months difference: {months_diff}", self.verbose)
-            period_index = pd.period_range(start=start_dt.replace(day=1), end=end_dt, freq='M')
-        else:
+        # Get the frequency from the granularity rules configuration
+        if granularity not in self.rules:
             raise ValueError(f"Invalid granularity: {granularity}. Must be one of: {list(self.rules.keys())}")
+        
+        freq = self.rules[granularity]['freq']
+        _print_if_verbose(f"Using frequency '{freq}' for granularity '{granularity}'", self.verbose)
+        
+        # Create period index using the frequency from config
+        period_index = pd.period_range(start=start_dt, end=end_dt, freq=freq)
         
         # make the datetime index from the period index, doing it this way
         # gives us something that matches how Google Trends does it
@@ -233,8 +219,6 @@ class GranularityManager:
         for code, rule in self.rules.items():
             # Check if we are on the last one, with no limit on max_hours
             if rule['max_hours'] == float('inf'):
-                granularity = code
-                max_units = float('inf')
                 _print_if_verbose(f"Selected granularity {code} (no limit on max_hours)", self.verbose)
                 break
             # Create timedelta object based on max_hours
@@ -245,26 +229,15 @@ class GranularityManager:
             # Apply the max_inclusive logic
             if rule['max_inclusive']:
                 if time_diff <= max_timedelta:
-                    granularity = code
-                    max_units = rule['max_records']
                     _print_if_verbose(f"Selected granularity {code} (inclusive rule, time_diff={time_diff} <= max_timedelta={max_timedelta})", self.verbose)
                     break
             else:
                 if time_diff < max_timedelta:
-                    granularity = code
-                    max_units = rule['max_records']
                     _print_if_verbose(f"Selected granularity {code} (exclusive rule, time_diff={time_diff} < max_timedelta={max_timedelta})", self.verbose)
                     break
         
-        # Create appropriate DateTimeIndex and PeriodIndex based on granularity
-        datetime_index, period_index = self.create_time_indices(start_dt, end_dt, granularity)
-        
-        return {
-            "granularity": granularity,
-            "datetime_index": datetime_index,
-            "period_index": period_index,
-            "max_units": max_units
-        }
+        rule['granularity'] = code
+        return rule
     
     def get_max_period_by_granularity(
         self,
@@ -297,3 +270,282 @@ class GranularityManager:
             "end_dt": end_dt,
             "period_index": max_period_index
         }
+    
+    def standardize_time_range(
+        self,
+        start: datetime = None,
+        end: datetime = None, 
+        granularity: str = 'D',
+        range_space: str = ' '
+    ) -> dict:
+        """
+        Convert start_date and end_date into formatted time range strings and set instance attributes.
+        If dates are strings, they will be parsed into datetime objects.
+        Every instance of DateRange should use this method to properly set its date or time range attributes.
+        
+        Args:
+            start_date (Optional[Union[str, datetime]]): Start date. If string, will be parsed with dateutil.parser
+            end_date (Optional[Union[str, datetime]]): End date. If string, will be parsed with dateutil.parser
+            
+        Returns:
+            DateRange: Returns self for method chaining
+            
+        Raises:
+            ValueError: If neither start_date nor end_date is provided
+            ValueError: If self.granularity is not one of: 's' (seconds), 'm' (minutes), 'h' (hourly), 
+                       'D' (daily), 'W' (weekly), 'M' (monthly), 'Q' (quarterly), 'Y' (yearly), 'X' (decade)
+        """
+        # Check if any dates are provided
+        if not start or not end:
+            raise ValueError("make_time_range requires both start and end")
+
+        # For clarity, get the rules we will use out of the config
+        if granularity not in self.rules:
+            raise ValueError(f"Invalid granularity: {granularity}. Must be one of: {list(self.rules.keys())}")
+        rule = self.rules[granularity]
+        freq = rule['freq']
+        fixed = rule['fixed']
+        allows_hours = rule['allows_hours']
+        allows_minutes = rule['allows_minutes']
+        allows_seconds = rule['allows_seconds']
+        
+        if allows_seconds:
+            format_str_ymd = "%Y-%m-%dT%H:%M:%S"
+            format_str_mdy = "%m/%d/%YT%H:%M:%S"
+            replace_keys = {'microsecond': 0}
+        elif allows_minutes:
+            format_str_ymd = "%Y-%m-%dT%H:%M"
+            format_str_mdy = "%m/%d/%YT%H:%M"
+            replace_keys = {'second': 0, 'microsecond': 0}
+        elif allows_hours:
+            format_str_ymd = "%Y-%m-%dT%H"
+            format_str_mdy = "%m/%d/%YT%H"
+            replace_keys = {'minute': 0, 'second': 0, 'microsecond': 0}
+        else:
+            format_str_ymd = "%Y-%m-%d"
+            format_str_mdy = "%m/%d/%Y"
+            replace_keys = {'hour': 0, 'minute': 0, 'second': 0, 'microsecond': 0}
+        
+        # Now do the truncation for datetime objects
+        trimmed_start_date_dt = start.replace(**replace_keys)
+        trimmed_end_date_dt = end.replace(**replace_keys)
+        formatted_start_date_ymd = trimmed_start_date_dt.strftime(format_str_ymd)
+        formatted_start_date_mdy = trimmed_start_date_dt.strftime(format_str_mdy)
+        formatted_end_date_ymd = trimmed_end_date_dt.strftime(format_str_ymd)
+        formatted_end_date_mdy = trimmed_end_date_dt.strftime(format_str_mdy)
+        formatted_range_ymd = f"{formatted_start_date_ymd}{range_space}{formatted_end_date_ymd}"
+        formatted_range_mdy = f"{formatted_start_date_mdy}{range_space}{formatted_end_date_mdy}"
+        
+        return {
+            "trimmed_start_date_dt": trimmed_start_date_dt,
+            "trimmed_end_date_dt": trimmed_end_date_dt,
+            "formatted_start_date_ymd": formatted_start_date_ymd,
+            "formatted_start_date_mdy": formatted_start_date_mdy,
+            "formatted_end_date_ymd": formatted_end_date_ymd,
+            "formatted_end_date_mdy": formatted_end_date_mdy,
+            "formatted_range_ymd": formatted_range_ymd,
+            "formatted_range_mdy": formatted_range_mdy
+        }
+    
+
+
+        # # Truncate by provided granularity.
+        # if granularity == 's':
+        #     # For seconds granularity:
+        #     # - Both start and end dates are rounded down to the nearest second
+        #     if start_date:
+        #         start_date = start_date.replace(microsecond=0)
+        #         self.formatted_start_date_ymd = start_date.strftime("%Y-%m-%dT%H:%M:%S")
+        #         self.formatted_start_date_mdy = start_date.strftime("%m/%d/%YT%H:%M:%S")
+        #         self.start_date_dt = start_date
+        #     if end_date:
+        #         end_date = end_date.replace(microsecond=0)
+        #         self.formatted_end_date_ymd = end_date.strftime("%Y-%m-%dT%H:%M:%S")
+        #         self.formatted_end_date_mdy = end_date.strftime("%m/%d/%YT%H:%M:%S")
+        #         self.end_date_dt = end_date
+        # elif granularity == 'm':
+        #     # For minutes granularity:
+        #     # - Both start and end dates are rounded down to the nearest minute
+        #     if start_date:
+        #         start_date = start_date.replace(second=0, microsecond=0)
+        #         self.formatted_start_date_ymd = start_date.strftime("%Y-%m-%dT%H:%M")
+        #         self.formatted_start_date_mdy = start_date.strftime("%m/%d/%YT%H:%M")
+        #         self.start_date_dt = start_date
+        #     if end_date:
+        #         end_date = end_date.replace(second=0, microsecond=0)
+        #         self.formatted_end_date_ymd = end_date.strftime("%Y-%m-%dT%H:%M")
+        #         self.formatted_end_date_mdy = end_date.strftime("%m/%d/%YT%H:%M")
+        #         self.end_date_dt = end_date
+        # elif granularity == 'h':
+        #     # For hourly granularity:
+        #     # - Both start and end dates are rounded down to the nearest hour
+        #     if start_date:
+        #         start_date = start_date.replace(minute=0, second=0, microsecond=0)
+        #         self.formatted_start_date_ymd = start_date.strftime("%Y-%m-%dT%H")
+        #         self.formatted_start_date_mdy = start_date.strftime("%m/%d/%YT%H")
+        #         self.start_date_dt = start_date
+        #     if end_date:
+        #         end_date = end_date.replace(minute=0, second=0, microsecond=0)
+        #         self.formatted_end_date_ymd = end_date.strftime("%Y-%m-%dT%H")
+        #         self.formatted_end_date_mdy = end_date.strftime("%m/%d/%YT%H")
+        #         self.end_date_dt = end_date
+        # elif granularity == 'D':
+        #     # For daily granularity:
+        #     # - Both start and end dates are rounded down to the start of the day
+        #     if start_date:
+        #         start_date = start_date.replace(hour=0, minute=0, second=0, microsecond=0)
+        #         self.formatted_start_date_ymd = start_date.strftime("%Y-%m-%d")
+        #         self.formatted_start_date_mdy = start_date.strftime("%m/%d/%Y")
+        #         self.start_date_dt = start_date
+        #     if end_date:
+        #         end_date = end_date.replace(hour=0, minute=0, second=0, microsecond=0)
+        #         self.formatted_end_date_ymd = end_date.strftime("%Y-%m-%d")
+        #         self.formatted_end_date_mdy = end_date.strftime("%m/%d/%Y")
+        #         self.end_date_dt = end_date
+        # elif granularity == 'W':
+        #     # For weekly granularity:
+        #     # - Start date is truncated to previous Sunday (week start)
+        #     # - End date is rounded up to next Saturday (week end)
+        #     if start_date:
+        #         start_date = start_date.replace(hour=0, minute=0, second=0, microsecond=0)
+        #         # Calculate days to subtract to get to previous Sunday (weekday 6)
+        #         days_to_subtract = (start_date.weekday() + 1) % 7
+        #         start_date = (start_date - timedelta(days=days_to_subtract)).replace(
+        #             hour=0, minute=0, second=0, microsecond=0
+        #         )
+        #         self.formatted_start_date_ymd = start_date.strftime("%Y-%m-%d")
+        #         self.formatted_start_date_mdy = start_date.strftime("%m/%d/%Y")
+        #         self.start_date_dt = start_date
+        #     if end_date:
+        #         end_date = end_date.replace(hour=0, minute=0, second=0, microsecond=0)
+        #         # Calculate days to add to get to next Saturday (weekday 5)
+        #         days_to_add = (5 - end_date.weekday()) % 7
+        #         end_date = (end_date + timedelta(days=days_to_add)).replace(
+        #             hour=0, minute=0, second=0, microsecond=0
+        #         )
+        #         self.formatted_end_date_ymd = end_date.strftime("%Y-%m-%d")
+        #         self.formatted_end_date_mdy = end_date.strftime("%m/%d/%Y")
+        #         self.end_date_dt = end_date
+        # elif granularity == 'M':
+        #     # For monthly granularity:
+        #     # - Start date is truncated to first day of the month
+        #     # - End date is rounded to last day of the month
+        #     if start_date:
+        #         start_date = start_date.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        #         self.formatted_start_date_ymd = start_date.strftime("%Y-%m-%d")
+        #         self.formatted_start_date_mdy = start_date.strftime("%m/%d/%Y")
+        #         self.start_date_dt = start_date
+        #     if end_date:
+        #         # Get the first day of next month
+        #         if end_date.month == 12:
+        #             next_month = end_date.replace(year=end_date.year + 1, month=1, day=1)
+        #         else:
+        #             next_month = end_date.replace(month=end_date.month + 1, day=1)
+        #         # Subtract one day to get last day of current month
+        #         end_date = (next_month - timedelta(days=1)).replace(
+        #             hour=0, minute=0, second=0, microsecond=0
+        #         )
+        #         self.formatted_end_date_ymd = end_date.strftime("%Y-%m-%d")
+        #         self.formatted_end_date_mdy = end_date.strftime("%m/%d/%Y")
+        #         self.end_date_dt = end_date
+        # elif granularity == 'Q':
+        #     # For quarterly granularity:
+        #     # - Start date is truncated to first day of the quarter (Jan 1, Apr 1, Jul 1, Oct 1)
+        #     # - End date is rounded to last day of the quarter (Mar 31, Jun 30, Sep 30, Dec 31)
+        #     if start_date:
+        #         # Calculate the first month of the quarter (0-based)
+        #         quarter_start_month = ((start_date.month - 1) // 3) * 3 + 1
+        #         start_date = start_date.replace(
+        #             month=quarter_start_month,
+        #             day=1,
+        #             hour=0, minute=0, second=0, microsecond=0
+        #         )
+        #         self.formatted_start_date_ymd = start_date.strftime("%Y-%m-%d")
+        #         self.formatted_start_date_mdy = start_date.strftime("%m/%d/%Y")
+        #         self.start_date_dt = start_date
+        #     if end_date:
+        #         # Calculate the last month of the quarter (0-based)
+        #         quarter_end_month = ((end_date.month - 1) // 3 + 1) * 3
+        #         # Get the first day of next quarter
+        #         if quarter_end_month == 12:
+        #             next_quarter = end_date.replace(year=end_date.year + 1, month=1, day=1)
+        #         else:
+        #             next_quarter = end_date.replace(month=quarter_end_month + 1, day=1)
+        #         # Subtract one day to get last day of current quarter
+        #         end_date = (next_quarter - timedelta(days=1)).replace(
+        #             hour=0, minute=0, second=0, microsecond=0
+        #         )
+        #         self.formatted_end_date_ymd = end_date.strftime("%Y-%m-%d")
+        #         self.formatted_end_date_mdy = end_date.strftime("%m/%d/%Y")
+        #         self.end_date_dt = end_date
+        # elif granularity == 'Y':
+        #     # For yearly granularity:
+        #     # - Start date is truncated to January 1st
+        #     # - End date is rounded to December 31st
+        #     if start_date:
+        #         start_date = start_date.replace(
+        #             month=1,
+        #             day=1,
+        #             hour=0, minute=0, second=0, microsecond=0
+        #         )
+        #         self.formatted_start_date_ymd = start_date.strftime("%Y-%m-%d")
+        #         self.formatted_start_date_mdy = start_date.strftime("%m/%d/%Y")
+        #         self.start_date_dt = start_date
+        #     if end_date:
+        #         end_date = end_date.replace(
+        #             month=12,
+        #             day=31,
+        #             hour=0, minute=0, second=0, microsecond=0
+        #         )
+        #         self.formatted_end_date_ymd = end_date.strftime("%Y-%m-%d")
+        #         self.formatted_end_date_mdy = end_date.strftime("%m/%d/%Y")
+        #         self.end_date_dt = end_date
+        # elif granularity == 'X':
+        #     # For decade granularity:
+        #     # - Start date is rounded down to the start of the decade (year ending in 0)
+        #     # - End date is rounded to the end of the decade (last day of year ending in 9)
+        #     if start_date:
+        #         # Round down to start of decade
+        #         decade_start = (start_date.year // 10) * 10
+        #         start_date = start_date.replace(
+        #             year=decade_start,
+        #             month=1,
+        #             day=1,
+        #             hour=0,
+        #             minute=0,
+        #             second=0,
+        #             microsecond=0
+        #         )
+        #         self.formatted_start_date_ymd = start_date.strftime("%Y-%m-%d")
+        #         self.formatted_start_date_mdy = start_date.strftime("%m/%d/%Y")
+        #         self.start_date_dt = start_date
+        #     if end_date:
+        #         # Calculate first day of next decade
+        #         next_decade = ((end_date.year // 10) + 1) * 10
+        #         # Subtract one day to get last day of current decade
+        #         end_date = (datetime(next_decade, 1, 1) - timedelta(days=1)).replace(
+        #             hour=0,
+        #             minute=0,
+        #             second=0,
+        #             microsecond=0
+        #         )
+        #         self.formatted_end_date_ymd = end_date.strftime("%Y-%m-%d")
+        #         self.formatted_end_date_mdy = end_date.strftime("%m/%d/%Y")
+        #         self.end_date_dt = end_date
+        # else:
+        #     raise ValueError(f"Invalid granularity: {self.granularity}")
+
+        # # Create formatted range strings
+        # if start and end:
+        #     self.formatted_range_ymd = f"{self.formatted_start_date_ymd}{self.range_space}{self.formatted_end_date_ymd}"
+        #     self.formatted_range_mdy = f"{self.formatted_start_date_mdy}{self.range_space}{self.formatted_end_date_mdy}"
+        # else:
+        #     raise ValueError("_make_time_range: start and end must be provided")
+        # elif start_date:
+        #     self.formatted_range_ymd = self.formatted_start_date_ymd
+        #     self.formatted_range_mdy = self.formatted_start_date_mdy
+        # elif end_date:
+        #     self.formatted_range_ymd = self.formatted_end_date_ymd
+        #     self.formatted_range_mdy = self.formatted_end_date_mdy
+
+        return self

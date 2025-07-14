@@ -1,58 +1,79 @@
 granularity_rules:
   m:
     name: "one-minute"
+    freq: "min"
     max_hours: 5
     max_days: null
     max_inclusive: False  # means < 5 hours
-    allows_hours: True
+    input_resolution: "h"
+    output_resolution: "m"
+    fixed: True
     max_records: 241 # see below for explanation of this value
     record_seconds: 3600
   e:
     name: "eight-minute"
+    freq: "8min"
     max_hours: 36
     max_days: null
     max_inclusive: False  # means < 36 hours
-    allows_hours: True
+    input_resolution: "h"
+    output_resolution: "m"
+    fixed: True
     max_records: 263 # see below for explanation of this value
     record_seconds: 3600
   n:
     name: "sixteen-minute"
+    freq: "16min"
     max_hours: 72
     max_days: 3
     max_inclusive: False  # means < 72 hours
-    allows_hours: True
+    input_resolution: "h"
+    output_resolution: "m"
+    fixed: True
     max_records: 267 # see below for explanation of this value
     record_seconds: 3600
   h:
     name: "hourly"
+    freq: "h"
     max_hours: 192
     max_days: 8
     max_inclusive: False  # means < 8 days
-    allows_hours: True
+    input_resolution: "h"
+    output_resolution: "h"
+    fixed: True
     max_records: 191
     record_seconds: 3600
   D:
     name: "daily"
+    freq: "D"
     max_hours: 6480
     max_days: 270
     max_inclusive: True  # means <= 270 days
-    allows_hours: False
+    input_resolution: "D"
+    output_resolution: "D"
+    fixed: True
     max_records: 270
     record_seconds: 86400
   W:
     name: "weekly"
+    freq: "W"
     max_hours: 45600
     max_days: 1900
     max_inclusive: True  # means <= 1900 days
-    allows_hours: False
+    input_resolution: "D"
+    output_resolution: "D"
+    fixed: False # a weekly frequency is not merely a 7 day duration, it's based on the calendar week
     max_records: 1900
     record_seconds: 604800
   M:
     name: "monthly"
+    freq: "M" # this is the freq code for pandas PeriodIndex. For DatetimeIndex, it's "MS".
     max_hours: .inf
     max_days: .inf
     max_inclusive: True
-    allows_hours: False
+    input_resolution: "D"
+    output_resolution: "M"
+    fixed: False # a monthly frequency is not a fixed number of days duration, it's based on the calendar month
     max_records: .inf
     record_seconds: 2419200 # minimum, 28 days. Maximum is 2678400, 31 days.
 

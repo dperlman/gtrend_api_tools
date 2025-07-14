@@ -477,7 +477,7 @@ def diff_day(d1: datetime, d2: datetime) -> int:
 def diff_hour(d1: datetime, d2: datetime) -> int:
     return ((d2-d1).total_seconds() // 3600)
 
-def period_index_full_duration(period_index: pd.PeriodIndex) -> timedelta:
+def period_index_range_info(period_index: pd.PeriodIndex) -> dict:
     """
     Calculate the duration of a period index, without the 1 microsecond offset that pandas does by default.
     Use this with caution! This is what we want for most of our Google Trends purposes,
@@ -488,7 +488,28 @@ def period_index_full_duration(period_index: pd.PeriodIndex) -> timedelta:
         timedelta: The duration of the period index.
     """
     temp_period_index = period_index.union([period_index[-1] + 1])
-    return temp_period_index[-1].start_time - temp_period_index[0].start_time
+    start_dt = temp_period_index[0].start_time
+    end_dt = temp_period_index[-1].start_time
+    duration = end_dt - start_dt
+    num_periods = len(period_index)
+    mean_period_duration = duration / num_periods
+    return {'start_dt': start_dt, 'end_dt': end_dt, 'duration': duration, 'num_periods': num_periods, 'mean_period_duration': mean_period_duration}
+
+def datetime_index_range_info(datetime_index: pd.DatetimeIndex) -> dict:
+    """
+    Calculate the duration of a datetime index.
+    Args:
+        datetime_index (pd.DatetimeIndex): The datetime index to calculate the duration of.
+    Returns:
+        timedelta: The duration of the datetime index.
+    """
+    temp_datetime_index = datetime_index.union([datetime_index[-1] + 1])
+    start_dt = temp_datetime_index[0]
+    end_dt = temp_datetime_index[-1]
+    duration = end_dt - start_dt
+    num_periods = len(datetime_index)
+    mean_period_duration = duration / num_periods
+    return {'start_dt': start_dt, 'end_dt': end_dt, 'duration': duration, 'num_periods': num_periods, 'mean_period_duration': mean_period_duration}
 
 
 # def make_time_range(
