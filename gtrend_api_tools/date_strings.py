@@ -243,7 +243,7 @@ def get_resolution_details(freq: str) -> tuple:
         format_str_ymd = '%Y-%m-%d'
         format_str_mdy = '%m/%d/%Y'
     if freq == 'M':
-        res_args['day'] = 0
+        res_args['day'] = 1
         res_args['hour'] = 0
         res_args['minute'] = 0
         res_args['second'] = 0
@@ -251,8 +251,8 @@ def get_resolution_details(freq: str) -> tuple:
         format_str_ymd = '%Y-%m'
         format_str_mdy = '%m/%Y'
     if freq == 'Y':
-        res_args['month'] = 0
-        res_args['day'] = 0
+        res_args['month'] = 1
+        res_args['day'] = 1
         res_args['hour'] = 0
         res_args['minute'] = 0
         res_args['second'] = 0

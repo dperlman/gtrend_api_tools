@@ -199,24 +199,24 @@ class DateRange:
         We will set our start_dt and end_dt properties to what the PeriodIndex calculates.
         The PeriodIndex will also help us get the duration, num_periods, and mean_period_duration.
         """
-        print(self.freq)
-        print(self.original_start_dt)
-        print(self.original_end_dt)
+        # print(self.freq)
+        # print(self.original_start_dt)
+        # print(self.original_end_dt)
         self.period_index = pd.period_range(start=self.original_start_dt, end=self.original_end_dt, freq=self.freq)
         self.datetime_index = self.period_index.to_timestamp().tz_localize(timezone.utc)
-        print(self.datetime_index.freqstr)
+        # print(self.datetime_index.freqstr)
         self.extended_period_index = self.period_index.union([self.period_index[-1] + 1])
         self.extended_datetime_index = self.extended_period_index.to_timestamp().tz_localize(timezone.utc)
 
         self.start_dt = self.datetime_index[0].to_pydatetime()
-        print(self.start_dt)
-        print(self.start_dt.tzinfo)
+        # print(self.start_dt)
+        # print(self.start_dt.tzinfo)
         self.last_index_dt = self.datetime_index[-1].to_pydatetime()
-        print(self.last_index_dt)
-        print(self.last_index_dt.tzinfo)
+        # print(self.last_index_dt)
+        # print(self.last_index_dt.tzinfo)
         self.end_dt = self.extended_datetime_index[-1].to_pydatetime()
-        print(self.end_dt)
-        print(self.end_dt.tzinfo)
+        # print(self.end_dt)
+        # print(self.end_dt.tzinfo)
         self.duration = self.end_dt - self.start_dt
         self.num_periods = len(self.period_index)
         self.mean_period_duration = self.duration / self.num_periods

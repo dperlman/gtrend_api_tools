@@ -56,7 +56,7 @@ granularity_rules:
     record_seconds: 86400
   W:
     name: "weekly"
-    freq: "W"
+    freq: "W-SAT" # pandas default for W is a Monday-Sunday week, but we want a Sunday-Saturday week
     max_hours: 45600
     max_days: 1900
     max_inclusive: True  # means <= 1900 days
