@@ -206,43 +206,44 @@ def cleanup_date_str(date_str: str) -> str:
     date_str_unicode_normalized = date_str_unicode_normalized.strip()
     return date_str_unicode_normalized 
 
-def get_resolution_details(freq: str) -> tuple:
+def get_resolution_details(resolution: str) -> tuple:
     """
     Get the resolution arguments from a frequency string.
     The format strings are meant to be used to format date strings,
     while the resolution arguments are meant to be used to replace the values in a datetime object.
-    NOTE: I don't think I'm going to use this.
+    This is used in the DateRange class to get the resolution arguments and format strings for the output date range.
+    
     Args:
-        freq (str): The frequency string.
+        resolution (str): The resolution string.
     Returns:
         tuple: (dict: The resolution arguments,
                 str: The format string for YYYY-MM-DD,
                 str: The format string for MM/DD/YYYY)
     """
     res_args = {}
-    if freq == 's':
+    if resolution == 's':
         res_args['microsecond'] = 0
         format_str_ymd = '%Y-%m-%dT%H:%M:%S'
         format_str_mdy = '%m/%d/%YT%H:%M:%S'
-    if freq == 'm':
+    if resolution == 'm':
         res_args['second'] = 0
         res_args['microsecond'] = 0
         format_str_ymd = '%Y-%m-%dT%H:%M'
         format_str_mdy = '%m/%d/%YT%H:%M'
-    if freq == 'h':
+    if resolution == 'h':
         res_args['minute'] = 0
         res_args['second'] = 0
         res_args['microsecond'] = 0
         format_str_ymd = '%Y-%m-%dT%H'
         format_str_mdy = '%m/%d/%YT%H'
-    if freq == 'D':
+    if resolution == 'D':
         res_args['hour'] = 0
         res_args['minute'] = 0
         res_args['second'] = 0
         res_args['microsecond'] = 0
         format_str_ymd = '%Y-%m-%d'
         format_str_mdy = '%m/%d/%Y'
-    if freq == 'M':
+    if resolution == 'M':
         res_args['day'] = 1
         res_args['hour'] = 0
         res_args['minute'] = 0
@@ -250,7 +251,7 @@ def get_resolution_details(freq: str) -> tuple:
         res_args['microsecond'] = 0
         format_str_ymd = '%Y-%m'
         format_str_mdy = '%m/%Y'
-    if freq == 'Y':
+    if resolution == 'Y':
         res_args['month'] = 1
         res_args['day'] = 1
         res_args['hour'] = 0

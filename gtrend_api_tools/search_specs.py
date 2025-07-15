@@ -186,8 +186,8 @@ class DateRange:
         clean_range_str = cleanup_date_str(range_str)
         # split the date range string into start and end date
         start_str, end_str = split_date_range_str(clean_range_str)
-        print(start_str)
-        print(end_str)
+        # print(start_str)
+        # print(end_str)
         
         return start_str, end_str
     
@@ -262,12 +262,24 @@ class GtrendDateRange(DateRange):
     calculates the appropriate granularity. If you need to specify granularity explicitly,
     use the DateRange base class instead.
     """
-    def _init_range_str_start_end(self, range_str: Optional[str], start: Optional[Union[str, datetime]], end: Optional[Union[str, datetime]]) -> None:
-        """
-        Since we are extending DateRange, we need to override this method to make sure we are
-        not receiving the arguments `granularity` or `freq` or `resolution`.
-        """
-        super()._init_range_str_start_end(range_str, start, end)
+    def __init__(self, *args, **kwargs):
+        # Just make sure we are not receiving the arguments `granularity` or `freq` or `resolution`.
+        if 'granularity' in kwargs:
+            raise ValueError(f"{self.__class__.__name__} does not accept the argument `granularity`")
+        if 'freq' in kwargs:
+            raise ValueError(f"{self.__class__.__name__} does not accept the argument `freq`")
+        if 'resolution' in kwargs:
+            raise ValueError(f"{self.__class__.__name__} does not accept the argument `resolution`")
+        # OK that's all. just go ahead with the initialization.
+        super().__init__(*args, **kwargs)
+
+    # def _init_range_str_start_end(self, range_str: Optional[str], start: Optional[Union[str, datetime]], end: Optional[Union[str, datetime]]) -> None:
+    #     """
+    #     Since we are extending DateRange, we need to override this method to make sure we are
+    #     not receiving the arguments `granularity` or `freq` or `resolution`.
+    #     """
+    #     super()._init_range_str_start_end(range_str, start, end)
+        
 
     def _init_date_range_info(self) -> None:
         """
