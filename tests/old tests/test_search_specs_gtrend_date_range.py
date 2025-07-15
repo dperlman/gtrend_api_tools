@@ -3,9 +3,6 @@ from datetime import datetime, timedelta, timezone
 from gtrend_api_tools.search_specs import GtrendDateRange
 
 
-
-
-
 # Test some invalid inputs
 def test_gdr_no_dates():
     """Test creating GtrendDateRange from no inputs should raise ValueError"""
