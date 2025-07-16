@@ -411,7 +411,7 @@ def standard_dict_to_df(standardized_data: List[Dict[str, Any]]) -> pd.DataFrame
     
     # Convert index to datetime if it's not already
     #print(df.index)
-    df.index = pd.to_datetime(df.index)
+    df.index = pd.to_datetime(df.index, utc=True)
     
     # Get the frequency using GranularityManager
     granularity_manager = GranularityManager() # will load config automatically

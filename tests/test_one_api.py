@@ -1,7 +1,7 @@
 import pytest
-from datetime import datetime
+from datetime import datetime, timezone
 
-API_TO_TEST = 'dummy_api'
+API_TO_TEST = 'serpapi'
 
 @pytest.mark.parametrize('api_key,api_instance', [(API_TO_TEST, API_TO_TEST)], indirect=True)
 def test_api_search_history(api_instance, test_terms, test_dates):
@@ -102,9 +102,9 @@ def test_api_datetime_input(api_instance, test_terms, test_dates):
     assert api_instance.data
     # Check date range
     #print([entry['date'] for entry in api_instance.data])
-    dates = [datetime.strptime(entry['date'], "%Y-%m-%d") for entry in api_instance.data]
-    assert min(dates) >= start.replace(tzinfo=None) # we have to do that becasue the strptime above isn't caring about the timezone
-    assert max(dates) <= end.replace(tzinfo=None)
+    dates = [datetime.strptime(entry['date'], "%Y-%m-%d").replace(tzinfo=timezone.utc) for entry in api_instance.data]
+    assert min(dates) >= start
+    assert max(dates) <= end
     
     # Check DataFrame conversion
     api_instance.make_dataframe()

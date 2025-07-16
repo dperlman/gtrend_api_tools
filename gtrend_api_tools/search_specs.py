@@ -44,7 +44,12 @@ from gtrend_api_tools.utils import load_config, _print_if_verbose, period_index_
 from gtrend_api_tools.date_strings import parse_date_str, split_date_range_str, cleanup_date_str, get_resolution_details # parse_date_str is a wrapper for dateutil.parser.parse where we set the default the way we want it
 from gtrend_api_tools.granularity import GranularityManager
 import pandas as pd
+from types import SimpleNamespace
 
+
+########################################################
+# DateRange class. Base class for all date range classes.
+########################################################
 
 class DateRange:
     """
@@ -86,19 +91,22 @@ class DateRange:
         self.original_end_str: Optional[str] = None
         self.original_start_dt: datetime
         self.original_end_dt: datetime
-        self.start_str: str
-        self.end_str: str
+        # self.start_str: str
+        # self.last_index_str: str
+        # self.end_str: str
         self.start_dt: datetime
+        self.last_index_dt: datetime
         self.end_dt: datetime
-        self.formatted_start_ymd: str
-        self.formatted_start_mdy: str
-        self.formatted_end_ymd: str
-        self.formatted_end_mdy: str
-        self.formatted_range_ymd: str
-        self.formatted_range_mdy: str
+        # self.formatted_start_ymd: str
+        # self.formatted_start_mdy: str
+        # self.formatted_end_ymd: str
+        # self.formatted_end_mdy: str
+        # self.formatted_range_ymd: str
+        # self.formatted_range_mdy: str
         self.period_index: pd.PeriodIndex
         self.num_periods: int
         self.duration: timedelta
+        self.str: SimpleNamespace = SimpleNamespace()
 
         # First we need to sort out range_str, start, and end.
         self._init_range_str_start_end(range_str, start, end)
@@ -110,9 +118,7 @@ class DateRange:
         # Get the resolution arguments and apply them to the start and end dates and range strings
         self._apply_resolution()
 
-    #########################################################
     # Private methods
-    #########################################################
 
     def _init_range_str_start_end(self, range_str: Optional[str], start: Optional[Union[str, datetime]], end: Optional[Union[str, datetime]]) -> None:
         """
@@ -232,22 +238,32 @@ class DateRange:
         NOTE AND TODO: When we change self.start_dt and self.end_dt here, does it change what the PeriodIndex would be?
         """
         res_args, format_str_ymd, format_str_mdy = get_resolution_details(self.resolution)
+        #print(self.resolution, format_str_ymd)
         self.start_dt = self.start_dt.replace(**res_args)
+        self.last_index_dt = self.last_index_dt.replace(**res_args)
         self.end_dt = self.end_dt.replace(**res_args)
-        self.formatted_start_ymd = self.start_dt.strftime(format_str_ymd)
-        self.formatted_start_mdy = self.start_dt.strftime(format_str_mdy)
-        self.formatted_end_ymd = self.end_dt.strftime(format_str_ymd)
-        self.formatted_end_mdy = self.end_dt.strftime(format_str_mdy)
-        self.formatted_range_ymd = f"{self.formatted_start_ymd}{self.range_space}{self.formatted_end_ymd}"
-        self.formatted_range_mdy = f"{self.formatted_start_mdy}{self.range_space}{self.formatted_end_mdy}"
+        self.str.start_ymd = self.start_dt.strftime(format_str_ymd)
+        self.str.start_mdy = self.start_dt.strftime(format_str_mdy)
+        self.str.last_index_ymd = self.last_index_dt.strftime(format_str_ymd)
+        self.str.last_index_mdy = self.last_index_dt.strftime(format_str_mdy)
+        self.str.end_ymd = self.end_dt.strftime(format_str_ymd)
+        self.str.end_mdy = self.end_dt.strftime(format_str_mdy)
+        self.str.index_range_ymd = f"{self.str.start_ymd}{self.range_space}{self.str.last_index_ymd}"
+        self.str.index_range_mdy = f"{self.str.start_mdy}{self.range_space}{self.str.last_index_mdy}"
+        self.str.full_range_ymd = f"{self.str.start_ymd}{self.range_space}{self.str.end_ymd}"
+        self.str.full_range_mdy = f"{self.str.start_mdy}{self.range_space}{self.str.end_mdy}"
 
     def __str__(self):
-        return f"{self.__class__.__name__} {self.formatted_range_ymd}"
+        return f"{self.__class__.__name__} {self.str.full_range_ymd}"
     
     def __repr__(self):
-        return (f"{self.__class__.__name__}(start_date={self.formatted_start_ymd}, end_date={self.formatted_end_ymd}, "
+        return (f"{self.__class__.__name__}(start_date={self.str.start_ymd}, end_date={self.str.end_ymd}, "
                 f"freq={self.freq}, range_space='{self.range_space}')")
 
+
+########################################################
+# GtrendDateRange class. Extends DateRange to handle Google Trends specific date ranges.
+########################################################
 
 
 class GtrendDateRange(DateRange):
@@ -271,6 +287,17 @@ class GtrendDateRange(DateRange):
         if 'resolution' in kwargs:
             raise ValueError(f"{self.__class__.__name__} does not accept the argument `resolution`")
         # OK that's all. just go ahead with the initialization.
+        # Additional parameters that are specific to GtrendDateRange
+        # If gtrend_params is not provided, set it to an empty dictionary
+        if 'gtrend_params' not in kwargs:
+            kwargs['gtrend_params'] = {}
+        self.gtrend_params = kwargs['gtrend_params']
+        # Maybe if I were a better programmer I could handle this default more gracefully but this is what I'm doing for now.
+        if 'override_hours' not in self.gtrend_params:
+            self.gtrend_params['override_hours'] = False
+        # Remove the gtrend_params from the kwargs
+        kwargs.pop('gtrend_params')
+        # Now call the base class __init__
         super().__init__(*args, **kwargs)
 
     # def _init_range_str_start_end(self, range_str: Optional[str], start: Optional[Union[str, datetime]], end: Optional[Union[str, datetime]]) -> None:
@@ -296,18 +323,44 @@ class GtrendDateRange(DateRange):
             start_date=self.original_start_dt,
             end_date=self.original_end_dt
         )
+        #print(self.original_start_dt, self.original_end_dt)
+        #print(self.granularity_info)
         self.granularity = self.granularity_info['granularity']
         self.freq = self.granularity_info['freq']
-        self.resolution = self.granularity_info['output_resolution']
+        self.resolution = self.granularity_info['result_resolution']
+        self.search_resolution = self.granularity_info['search_resolution']
         super()._init_date_range_info()
 
+    def _apply_resolution(self) -> None:
+        """
+        Apply the resolution to the start and end dates.
+        Extends the base class method to also make a search_resolution version of the start and end dates.
+        """
+        # First do it the original way
+        super()._apply_resolution()
+        # Then also create search ranges to be used in gtrend api calls
+        res_args, format_str_ymd, format_str_mdy = get_resolution_details(self.search_resolution)
+        start_dt = self.start_dt.replace(**res_args)
+        last_index_dt = self.last_index_dt.replace(**res_args)
+        formatted_start_ymd = start_dt.strftime(format_str_ymd)
+        formatted_start_mdy = start_dt.strftime(format_str_mdy)
+        formatted_last_index_ymd = last_index_dt.strftime(format_str_ymd)
+        formatted_last_index_mdy = last_index_dt.strftime(format_str_mdy)
+        # These are the new properties we have, beyond the base class properties
+        self.str.search_range_ymd = f"{formatted_start_ymd}{self.range_space}{formatted_last_index_ymd}"
+        self.str.search_range_mdy = f"{formatted_start_mdy}{self.range_space}{formatted_last_index_mdy}"
+
     def __str__(self):
-        return f"{self.__class__.__name__} {self.formatted_range_ymd} (granularity: {self.granularity})"
+        return f"{self.__class__.__name__} {self.str.full_range_ymd} (granularity: {self.granularity})"
     
     def __repr__(self):
-        return (f"{self.__class__.__name__}(start_date={self.formatted_start_ymd}, end_date={self.formatted_end_ymd}, "
+        return (f"{self.__class__.__name__}(start_date={self.str.start_ymd}, end_date={self.str.end_ymd}, "
                 f"granularity={self.granularity})")
 
+
+########################################################
+# SearchSpec class. Extends GtrendDateRange to include search terms.
+########################################################
 
 class SearchSpec(GtrendDateRange):
     """
@@ -349,10 +402,10 @@ class SearchSpec(GtrendDateRange):
             self._init_search_spec(search_term)
     
     def __str__(self):
-        return f"SearchSpec {self.term_string} {self.formatted_range_ymd}"
+        return f"SearchSpec {self.term_string} {self.str.full_range_ymd}"
     
     def __repr__(self):
-        return f"SearchSpec(search_term={self.term_string}, start_date={self.start_date}, end_date={self.end_date}, granularity={self.granularity})"
+        return f"SearchSpec(search_term={self.term_string}, start_date={self.str.start_ymd}, end_date={self.str.end_ymd}, granularity={self.granularity})"
     
     @classmethod
     def _from_date_range(cls, date_range: DateRange, search_term: Union[str, List[str]], **kwargs):
@@ -382,16 +435,20 @@ class SearchSpec(GtrendDateRange):
         instance.original_end_str = date_range.original_end_str
         instance.original_start_dt = date_range.original_start_dt
         instance.original_end_dt = date_range.original_end_dt
-        instance.start_str = date_range.start_str
-        instance.end_str = date_range.end_str
-        instance.start_dt = date_range.start_dt
-        instance.end_dt = date_range.end_dt
-        instance.formatted_start_ymd = date_range.formatted_start_ymd
-        instance.formatted_start_mdy = date_range.formatted_start_mdy
-        instance.formatted_end_ymd = date_range.formatted_end_ymd
-        instance.formatted_end_mdy = date_range.formatted_end_mdy
-        instance.formatted_range_ymd = date_range.formatted_range_ymd
-        instance.formatted_range_mdy = date_range.formatted_range_mdy
+        # instance.start_str = date_range.start_str
+        # instance.end_str = date_range.end_str
+        # instance.start_dt = date_range.start_dt
+        # instance.end_dt = date_range.end_dt
+        instance.str.start_ymd = date_range.str.start_ymd
+        instance.str.start_mdy = date_range.str.start_mdy
+        instance.str.end_ymd = date_range.str.end_ymd
+        instance.str.end_mdy = date_range.str.end_mdy
+        instance.str.index_range_ymd = date_range.str.index_range_ymd
+        instance.str.index_range_mdy = date_range.str.index_range_mdy
+        instance.str.full_range_ymd = date_range.str.full_range_ymd
+        instance.str.full_range_mdy = date_range.str.full_range_mdy
+        instance.str.search_range_ymd = date_range.str.search_range_ymd
+        instance.str.search_range_mdy = date_range.str.search_range_mdy
         instance.freq = date_range.freq
         instance.resolution = date_range.resolution
         instance.range_space = date_range.range_space
@@ -433,10 +490,10 @@ class SearchSpec(GtrendDateRange):
         self.term_string = ','.join(self.terms)
 
     def __str__(self):
-        return f"{self.__class__.__name__} {self.term_string} {self.formatted_range_ymd}"
+        return f"{self.__class__.__name__} {self.term_string} {self.str.full_range_ymd}"
     
     def __repr__(self):
-        return (f"{self.__class__.__name__}(search_term={self.term_string}, start_date={self.formatted_start_ymd}, end_date={self.formatted_end_ymd}, "
+        return (f"{self.__class__.__name__}(search_term={self.term_string}, start_date={self.str.start_ymd}, end_date={self.str.end_ymd}, "
                 f"granularity={self.granularity})")
 
 

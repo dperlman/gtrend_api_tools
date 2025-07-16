@@ -38,13 +38,12 @@ class SerpApi(API_Call):
         """
         # Call base class search method first to handle terms and dates
         super().search(**kwargs)
-        # Get the processed search spec for dates
-        spec = self.search_spec
+        self.verbose = True
         
         self.print_func(f"Sending SerpApi search request:")
         self.print_func(f"  Search term: {self.search_spec.term_string}")
-        self.print_func(f"  Start date: {self.search_spec.start_date}")
-        self.print_func(f"  End date: {self.search_spec.end_date}")
+        self.print_func(f"  Start date: {self.search_spec.formatted_start_ymd}")
+        self.print_func(f"  End date: {self.search_spec.formatted_end_ymd}")
         
         try:
             # Set up the request parameters
@@ -65,8 +64,8 @@ class SerpApi(API_Call):
                 params['gprop'] = self.gprop
             
             # Use the SearchSpec's date range
-            params['date'] = self.search_spec.formatted_range_ymd
-            self.print_func(f"  Time range: {self.search_spec.formatted_range_ymd}")
+            params['date'] = self.search_spec.search_range_ymd
+            self.print_func(f"  Time range: {self.search_spec.search_range_ymd}")
 
             # Prepare the request to print the full URL
             req = requests.Request('GET', self.base_url, params=params)

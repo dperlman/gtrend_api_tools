@@ -5,8 +5,8 @@ granularity_rules:
     max_hours: 5
     max_days: null
     max_inclusive: False  # means < 5 hours
-    input_resolution: "h"
-    output_resolution: "m"
+    search_resolution: "h"
+    result_resolution: "m"
     fixed: True
     max_records: 241 # see below for explanation of this value
     record_seconds: 3600
@@ -16,8 +16,8 @@ granularity_rules:
     max_hours: 36
     max_days: null
     max_inclusive: False  # means < 36 hours
-    input_resolution: "h"
-    output_resolution: "m"
+    search_resolution: "h"
+    result_resolution: "m"
     fixed: True
     max_records: 263 # see below for explanation of this value
     record_seconds: 3600
@@ -27,8 +27,8 @@ granularity_rules:
     max_hours: 72
     max_days: 3
     max_inclusive: False  # means < 72 hours
-    input_resolution: "h"
-    output_resolution: "m"
+    search_resolution: "h"
+    result_resolution: "m"
     fixed: True
     max_records: 267 # see below for explanation of this value
     record_seconds: 3600
@@ -38,8 +38,8 @@ granularity_rules:
     max_hours: 192
     max_days: 8
     max_inclusive: False  # means < 8 days
-    input_resolution: "h"
-    output_resolution: "h"
+    search_resolution: "h"
+    result_resolution: "h"
     fixed: True
     max_records: 191
     record_seconds: 3600
@@ -49,8 +49,8 @@ granularity_rules:
     max_hours: 6480
     max_days: 270
     max_inclusive: True  # means <= 270 days
-    input_resolution: "D"
-    output_resolution: "D"
+    search_resolution: "D"
+    result_resolution: "D"
     fixed: True
     max_records: 270
     record_seconds: 86400
@@ -60,8 +60,8 @@ granularity_rules:
     max_hours: 45600
     max_days: 1900
     max_inclusive: True  # means <= 1900 days
-    input_resolution: "D"
-    output_resolution: "D"
+    search_resolution: "D"
+    result_resolution: "D"
     fixed: False # a weekly frequency is not merely a 7 day duration, it's based on the calendar week
     max_records: 1900
     record_seconds: 604800
@@ -71,8 +71,8 @@ granularity_rules:
     max_hours: .inf
     max_days: .inf
     max_inclusive: True
-    input_resolution: "D"
-    output_resolution: "M"
+    search_resolution: "D"
+    result_resolution: "M"
     fixed: False # a monthly frequency is not a fixed number of days duration, it's based on the calendar month
     max_records: .inf
     record_seconds: 2419200 # minimum, 28 days. Maximum is 2678400, 31 days.
