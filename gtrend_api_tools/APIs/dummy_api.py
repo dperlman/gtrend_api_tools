@@ -67,11 +67,8 @@ class DummyApi(API_Call):
         # Get the processed search spec for dates
         spec = self.search_spec
             
-        # Calculate number of days
-        days = (spec.end_date_dt - spec.start_date_dt).days + 1
-        
-        # Generate dates
-        dates = [spec.start_date_dt + timedelta(days=i) for i in range(days)]
+        # Number of periods we need to generate data for
+        periods = spec.num_periods
         
         # Generate data in the format expected by standard_dict_to_df
         data = []
@@ -82,16 +79,24 @@ class DummyApi(API_Call):
             for i, term in enumerate(spec.terms):
                 # Each term gets a different number of zero crossings
                 num_zero_crossings = i + 2  # First term gets 2, second gets 3, etc.
-                values = sinc_data(num_zero_crossings, 100, 0, days)
+                values = sinc_data(num_zero_crossings, 100, 0, periods)
                 # Round to 2 decimal places
                 values = np.round(values, 2)
                 term_values.append(values)
             
             # Transpose the values so we have D groups of N terms
             term_values = np.array(term_values).T
-            
+
+            # Create a pandas DataFrame with spec.datetime_index as the index and one column per term
+            # Sanitize column names to match the expected format
+            sanitized_columns = [str(term).replace(' ', '_').lower() for term in spec.terms]
+            df = pd.DataFrame(
+                data=term_values,
+                index=spec.datetime_index,
+                columns=sanitized_columns
+            )
             # Create entries for each date
-            for i, date in enumerate(dates):
+            for i, date in enumerate(spec.datetime_index):
                 entry = {
                     'date': date.strftime('%Y-%m-%d'),
                     'values': [
@@ -104,8 +109,17 @@ class DummyApi(API_Call):
                 }
                 data.append(entry)
         else:
+            # Create a pandas DataFrame with constant values and one column per term
+            # Sanitize column names to match the expected format
+            sanitized_columns = [str(term).replace(' ', '_').lower() for term in spec.terms]
+            df = pd.DataFrame(
+                data=[[self.fill_value for _ in spec.terms] for _ in spec.datetime_index],
+                index=spec.datetime_index,
+                columns=sanitized_columns
+            )
+            self.dataframe = df
             # Fill with constant value
-            for date in dates:
+            for date in spec.datetime_index:
                 entry = {
                     'date': date.strftime('%Y-%m-%d'),
                     'values': [
@@ -120,6 +134,12 @@ class DummyApi(API_Call):
         
         # Store the same data as raw_data for consistency
         self.raw_data = data
-        
-        
+        self.data = data
+        self.dataframe = df
+
         return self 
+    
+    # Overriding the default method for creating the dataframe to do nothing (pass) as instructed.
+    def make_dataframe(self):
+        pass
+    

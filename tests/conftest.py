@@ -3,11 +3,10 @@ Main test configuration and fixture exports for gtrend_api_tools.
 """
 import os
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 # Import and re-export fixtures from submodules
 from .fixtures.api_fixtures import API_TO_TEST, VERBOSE, api_key, api_instance
-from .fixtures.data_fixtures import test_terms, test_dates
 from .fixtures.config_fixtures import test_config, available_apis
 from .fixtures.granularity_fixtures import granularity_api_1, granularity_api_2, api_instances_for_comparison
 
@@ -68,8 +67,8 @@ def test_dates():
             'end': "2024-01-10"
         },
         'datetime_range': {
-            'start': datetime(2024, 1, 1),
-            'end': datetime(2024, 1, 3)
+            'start': datetime(2024, 1, 1, tzinfo=timezone.utc),
+            'end': datetime(2024, 1, 3, tzinfo=timezone.utc)
         }
     }
 

@@ -2,7 +2,7 @@
 Data-related test fixtures for gtrend_api_tools.
 """
 import pytest
-from datetime import datetime
+from datetime import datetime, timezone
 
 @pytest.fixture(scope="module")
 def test_terms():
@@ -23,7 +23,7 @@ def test_terms():
 @pytest.fixture(scope="module")
 def test_dates():
     """Provide common test date ranges."""
-    return {
+    dates = {
         'short_range': {
             'start': "2024-01-01",
             'end': "2024-01-07"
@@ -33,7 +33,10 @@ def test_dates():
             'end': "2024-01-10"
         },
         'datetime_range': {
-            'start': datetime(2024, 1, 1),
-            'end': datetime(2024, 1, 3)
+            'start': datetime(2024, 1, 1, tzinfo=timezone.utc),
+            'end': datetime(2024, 1, 3, tzinfo=timezone.utc)
         }
     } 
+    debug = {'start_tzinfo': dates['datetime_range']['start'].tzinfo, 'end_tzinfo': dates['datetime_range']['end'].tzinfo}
+    dates['debug'] = debug
+    return dates
