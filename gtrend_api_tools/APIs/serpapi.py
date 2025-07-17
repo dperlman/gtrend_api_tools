@@ -24,7 +24,6 @@ class SerpApi(API_Call):
             **kwargs: Additional keyword arguments passed to API_Call
         """
         super().__init__(api_key=api_key, api_endpoint=api_endpoint, **kwargs)
-        self.base_url = api_endpoint
 
     def search(self, **kwargs) -> 'SerpApi':
         """
@@ -38,12 +37,10 @@ class SerpApi(API_Call):
         """
         # Call base class search method first to handle terms and dates
         super().search(**kwargs)
-        self.verbose = True
-        
+
         self.print_func(f"Sending SerpApi search request:")
         self.print_func(f"  Search term: {self.search_spec.term_string}")
-        self.print_func(f"  Start date: {self.search_spec.formatted_start_ymd}")
-        self.print_func(f"  End date: {self.search_spec.formatted_end_ymd}")
+        self.print_func(f"  Search date range: {self.search_spec.str.search_range_ymd}")
         
         try:
             # Set up the request parameters
@@ -64,17 +61,21 @@ class SerpApi(API_Call):
                 params['gprop'] = self.gprop
             
             # Use the SearchSpec's date range
-            params['date'] = self.search_spec.search_range_ymd
-            self.print_func(f"  Time range: {self.search_spec.search_range_ymd}")
+            # params['date'] = self.search_spec.str.search_range_mdy
+            # self.print_func(f"  Time range: {self.search_spec.str.search_range_mdy}")
+            params['date'] = self.search_spec.str.search_range_ymd
+            self.print_func(f"  Time range: {self.search_spec.str.search_range_ymd}")
 
             # Prepare the request to print the full URL
-            req = requests.Request('GET', self.base_url, params=params)
+            req = requests.Request('GET', self.api_endpoint, params=params)
             prepared = req.prepare()
             self.print_func(f"  Full request URL: {prepared.url}")
 
             # Make the API call using requests
             response = requests.Session().send(prepared)
             response.raise_for_status()  # Raise an exception for bad status codes
+            
+            # Parse the JSON response
             self.raw_data = response.json()
             
             # Check if there's an error in the results

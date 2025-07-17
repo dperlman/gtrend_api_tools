@@ -79,7 +79,8 @@ class DateRange:
         range_str: Optional[str] = None,
         freq: str = 'D',
         resolution: Optional[str] = 'h',
-        range_space: str = ' '
+        range_space: str = ' ',
+        verbose: bool = False
     ):
         self.original_start: Optional[str] = start
         self.original_end: Optional[str] = end
@@ -87,6 +88,7 @@ class DateRange:
         self.freq: str = freq  # Defaults to daily frequency.
         self.resolution: str = resolution
         self.range_space: str = range_space
+        self.verbose: bool = verbose
         self.original_start_str: Optional[str] = None
         self.original_end_str: Optional[str] = None
         self.original_start_dt: datetime
@@ -253,12 +255,18 @@ class DateRange:
         self.str.full_range_ymd = f"{self.str.start_ymd}{self.range_space}{self.str.end_ymd}"
         self.str.full_range_mdy = f"{self.str.start_mdy}{self.range_space}{self.str.end_mdy}"
 
+        # Now make lists of date strings based on the datetime_index
+        self.datetime_str_list_ymd = [dt.replace(**res_args).strftime(format_str_ymd) for dt in self.datetime_index]
+        self.datetime_str_list_mdy = [dt.replace(**res_args).strftime(format_str_mdy) for dt in self.datetime_index]
+
+
     def __str__(self):
         return f"{self.__class__.__name__} {self.str.full_range_ymd}"
     
     def __repr__(self):
         return (f"{self.__class__.__name__}(start_date={self.str.start_ymd}, end_date={self.str.end_ymd}, "
                 f"freq={self.freq}, range_space='{self.range_space}')")
+
 
 
 ########################################################
@@ -342,20 +350,20 @@ class GtrendDateRange(DateRange):
         res_args, format_str_ymd, format_str_mdy = get_resolution_details(self.search_resolution)
         start_dt = self.start_dt.replace(**res_args)
         last_index_dt = self.last_index_dt.replace(**res_args)
-        formatted_start_ymd = start_dt.strftime(format_str_ymd)
-        formatted_start_mdy = start_dt.strftime(format_str_mdy)
-        formatted_last_index_ymd = last_index_dt.strftime(format_str_ymd)
-        formatted_last_index_mdy = last_index_dt.strftime(format_str_mdy)
+        self.str.search_start_ymd = start_dt.strftime(format_str_ymd)
+        self.str.search_start_mdy = start_dt.strftime(format_str_mdy)
+        self.str.search_end_ymd = last_index_dt.strftime(format_str_ymd)
+        self.str.search_end_mdy = last_index_dt.strftime(format_str_mdy)
         # These are the new properties we have, beyond the base class properties
-        self.str.search_range_ymd = f"{formatted_start_ymd}{self.range_space}{formatted_last_index_ymd}"
-        self.str.search_range_mdy = f"{formatted_start_mdy}{self.range_space}{formatted_last_index_mdy}"
+        self.str.search_range_ymd = f"{self.str.search_start_ymd}{self.range_space}{self.str.search_end_ymd}"
+        self.str.search_range_mdy = f"{self.str.search_start_mdy}{self.range_space}{self.str.search_end_mdy}"
 
     def __str__(self):
         return f"{self.__class__.__name__} {self.str.full_range_ymd} (granularity: {self.granularity})"
     
     def __repr__(self):
         return (f"{self.__class__.__name__}(start_date={self.str.start_ymd}, end_date={self.str.end_ymd}, "
-                f"granularity={self.granularity})")
+                f"granularity={self.granularity}), freq={self.freq}, resolution={self.resolution}, search_resolution={self.search_resolution}")
 
 
 ########################################################

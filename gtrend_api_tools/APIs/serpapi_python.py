@@ -47,8 +47,7 @@ class SerpApiPython(API_Call):
         
         self.print_func(f"Sending SerpAPI search request:")
         self.print_func(f"  Search term: {spec.term_string}")
-        self.print_func(f"  Start date: {spec.start_date}")
-        self.print_func(f"  End date: {spec.end_date}")
+        self.print_func(f"  Search date range: {spec.str.search_range_ymd}")
         
         try:
             # Prepare the parameters for the search
@@ -69,8 +68,8 @@ class SerpApiPython(API_Call):
                 params['gprop'] = self.gprop
             
             # Use the SearchSpec's date range
-            params['time'] = spec.formatted_range_ymd
-            self.print_func(f"  Time range: {spec.formatted_range_ymd}")
+            params['time'] = spec.str.search_range_ymd
+            self.print_func(f"  Time range: {spec.str.search_range_ymd}")
             
             # Make the API call
             search = self.search_client(params)

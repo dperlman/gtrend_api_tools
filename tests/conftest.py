@@ -68,7 +68,7 @@ def test_dates():
         },
         'datetime_range': {
             'start': datetime(2024, 1, 1, tzinfo=timezone.utc),
-            'end': datetime(2024, 1, 3, tzinfo=timezone.utc)
+            'end': datetime(2024, 6, 12, tzinfo=timezone.utc)
         }
     }
 

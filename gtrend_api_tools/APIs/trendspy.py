@@ -76,13 +76,10 @@ class TrendsPy(API_Call):
         """
         # Call base class search method first to handle terms and dates
         super().search(**kwargs)
-        # Get the processed search spec for dates
-        spec = self.search_spec
         
         self.print_func(f"Sending TrendsPy search request:")
-        self.print_func(f"  Search term: {spec.term_string}")
-        self.print_func(f"  Start date: {spec.start_date}")
-        self.print_func(f"  End date: {spec.end_date}")
+        self.print_func(f"  Search term: {self.search_spec.term_string}")
+        self.print_func(f"  Search date range: {self.search_spec.str.search_range_ymd}")
         self.print_func(f"  Proxy: {self.proxy or 'None'}")
         self.print_func(f"  Change identity: {self.change_identity}")
         
@@ -94,9 +91,9 @@ class TrendsPy(API_Call):
                 'gprop': self.gprop if self.gprop is not None else ''  # trendspy expects empty string as default
             }
             # Parse time range if provided
-            if spec.start_date or spec.end_date:
-                params['timeframe'] = spec.formatted_range_ymd
-                self.print_func(f"  Time range: {spec.formatted_range_ymd}")
+            if self.search_spec.start_dt or self.search_spec.end_dt:
+                params['timeframe'] = self.search_spec.str.search_range_ymd
+                self.print_func(f"  Time range: {self.search_spec.str.search_range_ymd}")
             else:
                 self.print_func("  Time range: default")
             
@@ -105,7 +102,7 @@ class TrendsPy(API_Call):
                 self.print_func("  Changing Tor identity")
                 change_tor_identity(self.tor_control_password, self.print_func)
             
-            self.raw_data = self.trends.interest_over_time(spec.term_string, return_raw=True, **params) # we want raw dicts because we will clean and standardize them all later
+            self.raw_data = self.trends.interest_over_time(self.search_spec.term_string, return_raw=True, **params) # we want raw dicts because we will clean and standardize them all later
             
             # Check if there's an error in the results
             if isinstance(self.raw_data, dict) and "error" in self.raw_data:

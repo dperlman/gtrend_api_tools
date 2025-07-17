@@ -1,7 +1,7 @@
 import pytest
 from datetime import datetime, timezone
 
-API_TO_TEST = 'serpapi'
+API_TO_TEST = 'trendspy'
 
 @pytest.mark.parametrize('api_key,api_instance', [(API_TO_TEST, API_TO_TEST)], indirect=True)
 def test_api_search_history(api_instance, test_terms, test_dates):
@@ -96,21 +96,36 @@ def test_api_datetime_input(api_instance, test_terms, test_dates):
     search_term = test_terms['term1']
     start = test_dates['datetime_range']['start']
     end = test_dates['datetime_range']['end']
-    api_instance.search(search_term=search_term, start=start, end=end).standardize_data()
+    api_instance.search(search_term=search_term, start=start, end=end).standardize_data().make_dataframe()
     
     # Check standardized data structure
     assert api_instance.data
     # Check date range
-    #print([entry['date'] for entry in api_instance.data])
+    # print([entry['date'] for entry in api_instance.data])
     dates = [datetime.strptime(entry['date'], "%Y-%m-%d").replace(tzinfo=timezone.utc) for entry in api_instance.data]
-    assert min(dates) >= start
-    assert max(dates) <= end
+    # print(f"Query date range: {api_instance.search_spec.str.search_range_ymd}")
+    # print(f"Result first date: {dates[0]}")
+    # print(f"Result last date: {dates[-1]}")
+    print(f"Search Datetime Index: {api_instance.search_spec.datetime_index}")
+    print(f"Result Datetime Index: {api_instance.dataframe.index}")
+    # print(f"Search granularity: {api_instance.search_spec.granularity_info}")
+    #assert min(dates) >= start
+    #assert max(dates) <= end
+    offsets = [d[1] - d[0] for d in zip(dates,api_instance.search_spec.datetime_index)]
+    # print(f"Offsets: {offsets}")
+    first_offset = offsets[0]
+    assert all(item == first_offset for item in offsets)
     
     # Check DataFrame conversion
     api_instance.make_dataframe()
     assert not api_instance.dataframe.empty
     assert api_instance.dataframe.index[0].to_pydatetime() >= start
     assert api_instance.dataframe.index[-1].to_pydatetime() <= end
+
+
+##########################################################
+# Error handling tests
+##########################################################
 
 # Test: should raise ValueError when terms is None
 @pytest.mark.parametrize('api_key,api_instance', [(API_TO_TEST, API_TO_TEST)], indirect=True)

@@ -81,13 +81,63 @@ def split_date_range_str(date_str: str) -> tuple:
     #  11/3/2021 11/10/2021
     # with zero or more spaces around the - or single space
     mdy_date_match = re.search(
-        r'^(\d{1,2}/\d{1,2}/\d{4})\s*[- ]\s*(\d{1,2}/\d{1,2}/\d{4})',
+        r'^(\d{1,2}/\d{1,2}/\d{2,4})\s*[- ]\s*(\d{1,2}/\d{1,2}/\d{2,4})',
         clean_date_str
     )
     if mdy_date_match:
         start_date, end_date = mdy_date_match.groups()
         return start_date, end_date
-            
+    
+    # test for cases like
+    # 12/31/23, 5:00 PM - 1/6/24, 5:00 PM
+    # and also with seconds, e.g., 12/31/23, 5:00:45 PM - 1/6/24, 5:00:45 PM
+    # with zero or more spaces around the - or single space
+    mdy_date_match = re.search(
+        r'^(\d{1,2}/\d{1,2}/\d{2,4}[, ]+\d{1,2}:\d{2}(?::\d{2})?\s*[AaPp][Mm])\s*[- ]\s*(\d{1,2}/\d{1,2}/\d{2,4}[, ]+\d{1,2}:\d{2}(?::\d{2})?\s*[AaPp][Mm])',
+        clean_date_str
+    )
+
+    if mdy_date_match:  
+        start_date, end_date = mdy_date_match.groups()
+        return start_date, end_date
+
+    # test for cases like
+    # 2023-12-31, 5:00 PM - 2024-1-6, 5:00 PM
+    # and also with seconds, e.g., "2023-12-31, 5:00:45 PM - 2024-1-6, 5:00:45 PM"
+    # with zero or more spaces around the - or single space
+    iso_mdy_time_match = re.search(
+        r'^(\d{4}-\d{1,2}-\d{1,2}[, ]+\d{1,2}:\d{2}(?::\d{2})?\s*[AaPp][Mm])\s*[- ]\s*(\d{4}-\d{1,2}-\d{1,2}[, ]+\d{1,2}:\d{2}(?::\d{2})?\s*[AaPp][Mm])',
+        clean_date_str
+    )
+    if iso_mdy_time_match:
+        start_date, end_date = iso_mdy_time_match.groups()
+        return start_date, end_date
+    
+    # test for 24-hour time cases like
+    # 12/31/23, 5:00 - 1/6/24, 5:00
+    # and also with seconds, e.g., 12/31/23, 5:00:45 - 1/6/24, 5:00:45
+    # with zero or more spaces around the - or single space
+    mdy_24h_time_match = re.search(
+        r'^(\d{1,2}/\d{1,2}/\d{2,4}[, ]+\d{1,2}:\d{2}(?::\d{2})?)\s*[- ]\s*(\d{1,2}/\d{1,2}/\d{2,4}[, ]+\d{1,2}:\d{2}(?::\d{2})?)',
+        clean_date_str
+    )
+
+    if mdy_24h_time_match:  
+        start_date, end_date = mdy_24h_time_match.groups()
+        return start_date, end_date
+
+    # test for 24-hour time cases like
+    # 2023-12-31, 5:00 - 2024-1-6, 5:00
+    # and also with seconds, e.g., "2023-12-31, 5:00:45 - 2024-1-6, 5:00:45"
+    # with zero or more spaces around the - or single space
+    iso_24h_time_match = re.search(
+        r'^(\d{4}-\d{1,2}-\d{1,2}[, ]+\d{1,2}:\d{2}(?::\d{2})?)\s*[- ]\s*(\d{4}-\d{1,2}-\d{1,2}[, ]+\d{1,2}:\d{2}(?::\d{2})?)',
+        clean_date_str
+    )
+    if iso_24h_time_match:
+        start_date, end_date = iso_24h_time_match.groups()
+        return start_date, end_date
+
     # # test for cases like
     # #  Jan 1-7, 2020
     # #  Jan 1-7 2020

@@ -461,7 +461,8 @@ def _print_if_verbose(message: str, verbose: bool = False) -> None:
             _print_if_verbose.last_caller_caller = caller_caller_name
             
         # Print the message
-        _print_if_verbose(message)
+        print(message)
+
 
 def diff_month(d1: datetime, d2: datetime) -> int:
     d2m = d2.replace(day=1) # replace the day of the month with the first day of the month

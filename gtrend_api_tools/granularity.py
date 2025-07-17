@@ -21,7 +21,7 @@ class GranularityManager:
     The rules are sorted by max_days in ascending order, with rules having
     max_days=None placed at the end.
     """
-    def __init__(self, config: Optional[dict] = None, verbose: bool = True):
+    def __init__(self, config: Optional[dict] = None, verbose: bool = False):
         """
         Initialize granularity manager.
         
@@ -39,7 +39,7 @@ class GranularityManager:
         if not self.rules:
             raise ValueError("No granularity rules found in config")
         self.verbose = verbose
-        self.verbose = True
+
 
     def get_index_granularity(self, index: Union[pd.DatetimeIndex, pd.PeriodIndex]) -> str:
         """
@@ -59,36 +59,42 @@ class GranularityManager:
             
         # First try to get the frequency directly
         if index.freq is not None:
-            freq_str = str(index.freqstr)[0]
+            freq_str = str(index.freqstr)
             return freq_str
         
-        # If no frequency is set, try to infer from time differences
+        # Now try to use the native pandas method to get the frequency
+        freq = index.inferred_freq
+        if freq is not None:
+            freq_str = str(freq)
+            return freq_str
+        
+        # If neither of those worked, try to infer from time differences
         # Convert PeriodIndex to DatetimeIndex if needed
         if isinstance(index, pd.PeriodIndex):
             index = index.to_timestamp()
         
         # Calculate time differences in nanoseconds
         time_diffs = np.diff(index.astype(np.int64))
+        time_diff_value_counts = pd.Series(time_diffs).value_counts()
         
         # Print debugging information
         _print_if_verbose("Unique time differences and their counts:", self.verbose)
-        _print_if_verbose(pd.Series(time_diffs).value_counts(), self.verbose)
+        _print_if_verbose(time_diff_value_counts, self.verbose)
         
         # Use pandas value_counts instead of np.bincount for memory efficiency
-        most_common_diff = pd.Series(time_diffs).value_counts().index[0]
+        most_common_diff = time_diff_value_counts.index[0]
         _print_if_verbose(f"Most common difference: {most_common_diff} nanoseconds", self.verbose)
         
         # Convert to timedelta and check
         td = pd.Timedelta(most_common_diff, unit='ns')
         _print_if_verbose(f"Converted to timedelta: {td}", self.verbose)
         
-        # Find the first rule where the time difference is less than or equal to record_seconds
-        for code, rule in self.rules.items():
-            if td.total_seconds() <= rule['record_seconds']:
-                return code
-        
-        # If no rule matches, return monthly (last resort)
-        return 'M'
+        # Now get the granularity info and return it.
+        ########################################################################################################################
+        # This is actually completely wrong, going to have to fix this
+        ########################################################################################################################
+        return self.get_granularity_by_time_diff(td)['freq']
+    
 
     def create_time_indices(
         self,
@@ -215,6 +221,40 @@ class GranularityManager:
         time_diff = end_dt - start_dt
         _print_if_verbose(f"Time difference: {time_diff}", self.verbose)
         
+        return self.get_granularity_by_time_diff(time_diff)
+    
+        # # Determine granularity based on rules in order
+        # for code, rule in self.rules.items():
+        #     # Check if we are on the last one, with no limit on max_hours
+        #     if rule['max_hours'] == float('inf'):
+        #         _print_if_verbose(f"Selected granularity {code} (no limit on max_hours)", self.verbose)
+        #         break
+        #     # Create timedelta object based on max_hours
+        #     max_timedelta = timedelta(hours=rule['max_hours'])
+        #     max_days_info = f", max_days: {rule.get('max_days')}" if 'max_days' in rule else ""
+        #     _print_if_verbose(f"Rule {code} has max_hours: {rule['max_hours']}{max_days_info} -> timedelta: {max_timedelta}", self.verbose)
+            
+        #     # Apply the max_inclusive logic
+        #     if rule['max_inclusive']:
+        #         if time_diff <= max_timedelta:
+        #             _print_if_verbose(f"Selected granularity {code} (inclusive rule, time_diff={time_diff} <= max_timedelta={max_timedelta})", self.verbose)
+        #             break
+        #     else:
+        #         if time_diff < max_timedelta:
+        #             _print_if_verbose(f"Selected granularity {code} (exclusive rule, time_diff={time_diff} < max_timedelta={max_timedelta})", self.verbose)
+        #             break
+        
+        # rule['granularity'] = code
+        # return rule
+    
+
+    def get_granularity_by_time_diff(
+        self,
+        time_diff: timedelta
+    ) -> str:
+        """
+        Get the granularity code for a given time difference.
+        """ 
         # Determine granularity based on rules in order
         for code, rule in self.rules.items():
             # Check if we are on the last one, with no limit on max_hours
@@ -239,6 +279,8 @@ class GranularityManager:
         rule['granularity'] = code
         return rule
     
+
+
     def get_max_period_by_granularity(
         self,
         granularity: str,

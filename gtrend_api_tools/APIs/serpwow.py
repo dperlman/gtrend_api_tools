@@ -41,13 +41,13 @@ class Serpwow(API_Call):
         
         self.print_func(f"Sending Serpwow search request:")
         self.print_func(f"  Search term: {spec.term_string}")
-        self.print_func(f"  Start date: {spec.start_date}")
-        self.print_func(f"  End date: {spec.end_date}")
+        self.print_func(f"  Search date range: {spec.str.search_range_mdy}")
         
         try:
             # Parse time range if provided
-            time_period_min = spec.formatted_range_mdy.split()[0]
-            time_period_max = spec.formatted_range_mdy.split()[1]
+            # Weirdly, the Serpwow API expects the date range in the format MM/DD/YYYY and fails if it's in the format YYYY-MM-DD
+            time_period_min = spec.str.search_start_mdy
+            time_period_max = spec.str.search_end_mdy
             
             # Set up the request parameters
             params = {
@@ -72,8 +72,13 @@ class Serpwow(API_Call):
             if hasattr(self, 'gprop') and self.gprop is not None:
                 params['trends_gprop'] = self.gprop
             
-            # Make the HTTP GET request
-            response = requests.get(self.api_endpoint, params=params)
+            # Prepare the request to print the full URL
+            req = requests.Request('GET', self.api_endpoint, params=params)
+            prepared = req.prepare()
+            self.print_func(f"  Full request URL: {prepared.url}")
+
+            # Make the API call using requests
+            response = requests.Session().send(prepared)
             response.raise_for_status()  # Raise an exception for bad status codes
             
             # Parse the JSON response

@@ -42,8 +42,7 @@ class SearchApi(API_Call):
         
         self.print_func(f"Sending SearchApi search request:")
         self.print_func(f"  Search term: {spec.term_string}")
-        self.print_func(f"  Start date: {spec.start_date}")
-        self.print_func(f"  End date: {spec.end_date}")
+        self.print_func(f"  Search date range: {spec.str.search_range_ymd}")
         
         try:
             # Set up the request parameters with only the allowed parameters
@@ -66,8 +65,8 @@ class SearchApi(API_Call):
                 params['gprop'] = self.gprop
             
             # Parse time range if provided
-            params['time'] = spec.formatted_range_ymd
-            self.print_func(f"  Time range: {spec.formatted_range_ymd}")
+            params['time'] = spec.str.search_range_ymd
+            self.print_func(f"  Time range: {spec.str.search_range_ymd}")
             
             # Make the HTTP GET request
             response = requests.get(self.api_endpoint, params=params)

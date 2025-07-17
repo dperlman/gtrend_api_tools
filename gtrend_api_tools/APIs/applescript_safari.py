@@ -10,7 +10,7 @@ from bs4 import BeautifulSoup
 from gtrend_api_tools.APIs.base_classes import API_Call
 import pandas as pd
 from gtrend_api_tools.utils import _print_if_verbose
-from gtrend_api_tools.search_specs import DateRange
+from gtrend_api_tools.search_specs import DateRange, GtrendDateRange
 from gtrend_api_tools.date_strings import cleanup_date_str, standardize_date_range_start
 import json
 import unicodedata
@@ -48,6 +48,17 @@ CONFIRM_CONFIGS = {
             {'term': 'Trending Now', 'queryselector': 'a.tab-title'},
             {'term': 'x', 'queryselector': 'div.line-chart-body-wrapper line-chart-directive div div div div div table'}
         ]
+    }
+}
+
+PARSE_CONFIGS = {
+    'date_range': {
+        'string_to_search_for': '-',
+        'queryselector': 'custom-date-picker md-select md-select-value span div._md-text'
+    },
+    'data_table': {
+        'string_to_search_for': 'y1',
+        'queryselector': 'div.line-chart-body-wrapper line-chart-directive div div div div div table'
     }
 }
 
@@ -190,6 +201,239 @@ class ApplescriptSafari(API_Call):
         self.poll_wait_time = poll_wait_time
 
 
+    def search(self, **kwargs) -> 'ApplescriptSafari':
+        """
+        Search Google Trends using AppleScript and Safari.
+        
+        Args:
+            **kwargs: Arguments passed to the parent class search method
+            
+        Returns:
+            ApplescriptSafari: Returns self for method chaining
+        """
+        # Call base class search method first to handle terms and dates
+        super().search(**kwargs)
+        # Get the processed search spec for dates
+        spec = self.search_spec
+        
+        # Create auth session if it doesn't exist
+        if self._auth_session is None:
+            self.print_func("Creating new GoogleAuthSession")
+            self._auth_session = GoogleAuthSession(
+                safari_instance=self,
+                print_func=self.print_func,
+                auth_email=self.auth_email
+            )
+        
+        # Check Google authentication
+        if not self._auth_session.is_authenticated:
+            self._auth_session.login()
+        if not self._auth_session.is_authenticated:
+            raise Exception("Google authentication login failed")
+
+        self.print_func(f"Sending ApplescriptSafari search request:")
+        self.print_func(f"  Search term: {spec.term_string}")
+        self.print_func(f"  Search date range: {spec.str.search_range_ymd}")
+        
+        # Construct the URL
+        config = CONFIRM_CONFIGS['google_trends']
+        url_template = config['url']
+        
+        # Join search terms with commas and URL encode
+        query = quote(",".join(spec.terms))
+        self.print_func(f"Query: {query}")
+        
+        # Parse time range if provided
+        params = {
+            'date_range': spec.str.search_range_ymd,
+            'geo': self.geo,
+            'query': query
+        }
+        self.print_func(f"  Time range: {spec.str.search_range_ymd}")
+        
+        # Construct the URL
+        formatted_url = url_template.format(**params)
+        self.print_func(f"Opening URL: {formatted_url}")
+        
+        # Open URL in Safari, creating window only if needed
+        self.open_url_in_safari(formatted_url)
+        
+        # Get the raw HTML from the trends page
+        # NOTE!!!! We also need to get the date range from the search part of the returned page.
+        # custom-date-picker md-select md-select-value span div._md-text text value of this element.
+        html_content, date_range_str = self.parse_trends_page(spec.terms[0])
+        if not html_content:
+            raise Exception("Failed to parse trends page")
+        if not date_range_str:
+            raise Exception("Failed to parse date range from trends page")
+
+        # Store the raw data
+        self.raw_data = {'date_range': date_range_str, 'html_content': html_content}
+        
+        self.print_func("Search successful!")
+        
+        # Close tab if configured to do so
+        if self.close_tabs:
+            self.print_func("Closing front Safari tab")
+            self._close_front_safari_tab()
+
+        return self
+
+
+    def standardize_data(self) -> 'ApplescriptSafari':
+        """
+        Standardize the raw HTML data into a common format.
+        Parses the HTML table into a list of dictionaries with date and values.
+        
+        Returns:
+            ApplescriptSafari: Returns self for method chaining
+        """
+        if not self._raw_data_history:
+            raise ValueError("No raw data available. Call search() first.")
+        
+        # Get the date range from the raw data
+        date_range_str = self.raw_data['date_range']
+        self.print_func(f"Raw date range: {date_range_str}")
+        # Parse it into a date range object
+        date_range = DateRange(range_str=date_range_str, freq=self.search_spec.freq, resolution=self.search_spec.search_resolution)
+        self.print_func(f"Parsed date range with DateRange: {repr(date_range)}")
+
+        # Parse the HTML using BeautifulSoup
+        soup = BeautifulSoup(self.raw_data['html_content'], 'html.parser')
+        
+        # Find the table
+        table = soup.find('table')
+        if not table:
+            raise ValueError("No table found in HTML data")
+            
+        # Get headers (column names)
+        headers = [th.text.strip() for th in table.find_all('th')]
+        if not headers:
+            raise ValueError("No headers found in table")
+            
+        # The first column should be 'x' (dates)
+        if headers[0] != 'x':
+            raise ValueError("First column is not 'x' (dates)")
+            
+        # Get all rows
+        rows = table.find_all('tr')[1:]  # Skip header row
+        # Sanity check that the number of rows is the same as the number of dates in the date range
+        if len(rows) != len(date_range.datetime_str_list_ymd):
+            raise ValueError(f"Number of rows in table ({len(rows)}) does not match number of dates in date range ({len(date_range.datetime_str_list_ymd)})")
+        
+        # Get search terms from search_spec
+        search_terms = self.search_spec.terms
+        if not isinstance(search_terms, list):
+            search_terms = [search_terms]
+            
+        # Transform the data into the standardized format
+        raw_date_list = []
+        data = []
+        for i, row in enumerate(rows):
+            cells = row.find_all('td')
+            if len(cells) != len(headers):
+                continue  # Skip malformed rows
+                
+            # Parse the date
+            date_str = cells[0].text.strip()
+            #raw_date_list.append(cleanup_date_str(date_str))
+            raw_date_list.append(date_range.datetime_str_list_ymd[i])
+                
+            # Get values for each column (except the date column)
+            values = []
+            for j, cell in enumerate(cells[1:], 1):
+                try:
+                    value = int(cell.text.strip())
+                    # Use the search term from search_spec
+                    search_term = search_terms[j-1] if j-1 < len(search_terms) else f"term_{j}"
+                    values.append({
+                        'value': value,
+                        'query': search_term
+                    })
+                except ValueError:
+                    continue  # Skip invalid values
+                    
+            if values:  # Only add entries that have valid values
+                standardized_entry = {
+                    #'date': standardize_date_range_start(date_str),
+                    'date': date_range.datetime_str_list_ymd[i],
+                    'values': values
+                }
+                data.append(standardized_entry)
+        
+        if not data:
+            raise ValueError("No valid data found in table")
+            
+        self.data = data
+        self.print_func(f"Standardized data length: {len(data)}")
+        self.raw_date_list = raw_date_list
+        return self
+
+
+    def parse_trends_page(self, search_terms: Union[str, List[str]]) -> str:
+        """
+        Parse the Google Trends page using poll_for_text to check for expected elements.
+        Uses a predefined set of terms to verify the page has loaded correctly.
+        
+        Args:
+            search_terms (Union[str, List[str]]): The search term(s) being used
+            
+        Returns:
+            str: Prettified HTML of the y1 element if found, empty string if not found
+        """
+        # This may need to be changed if Google changes the Trends page, which they often do, to stop us from doing exactly this.
+        # Get the trends config
+        trends_config = CONFIRM_CONFIGS['google_trends']
+        date_range_config = PARSE_CONFIGS['date_range']
+        data_table_config = PARSE_CONFIGS['data_table']
+            
+        # Get the number of search terms
+        num_terms = len(search_terms) if isinstance(search_terms, list) else 1
+        # Limit to maximum of 5 terms
+        num_terms = min(num_terms, 5)
+        
+        # Base terms that should always be present
+        self.print_func("Checking for expected elements on trends page...")
+        
+        # Check all terms from config in one call
+        elements = self.poll_for_text(
+            search_texts=[term['term'] for term in trends_config['terms']],
+            query_selectors=[term['queryselector'] for term in trends_config['terms']]
+        )
+        
+        if not elements:
+            self.print_func("Warning: Expected elements were not found on the page")
+            return ""
+        else:        
+            # Get the y1 element and print its outerHTML
+            self.print_func("Getting y1 element container table...")
+            y1_elements = self.get_element_by_text(
+                'y1', 
+                query_selector=trends_config['terms'][-1]['queryselector'],
+                get_container_table=True
+            )
+            
+            if y1_elements[0]['containerTable']:
+                self.print_func("Found y1 element container table.")
+                container_table  = y1_elements[0]['containerTable']
+                # Prettify the HTML using BeautifulSoup
+                soup = BeautifulSoup(container_table, 'html.parser')
+                prettified_html = soup.prettify()
+                # now also get the date range from the search part of the returned page.
+                # custom-date-picker md-select md-select-value span div._md-text text value of this element.
+                date_range_element = self.get_element_by_text(
+                    date_range_config['string_to_search_for'],
+                    query_selector=date_range_config['queryselector']
+                )
+                self.print_func(f"Raw date_range_element: {date_range_element}")
+                self.print_func(f"Trends page date range: {date_range_element[0]['text']}")
+                return prettified_html, date_range_element[0]['text']
+            else:
+                self.print_func("Could not find y1 element")
+                self.print_func(f"y1_elements: {y1_elements}")
+                return ""
+
+
     def open_url_in_safari(self, url: str, load_delay: int = 0) -> None:
         """
         Open a URL in the current Safari window using AppleScript.
@@ -313,59 +557,6 @@ class ApplescriptSafari(API_Call):
             # We don't know what happened but it was bad
             raise JavaScriptError(f"Unknown error in get_element_by_text")
 
-
-    def parse_trends_page(self, search_terms: Union[str, List[str]]) -> str:
-        """
-        Parse the Google Trends page using poll_for_text to check for expected elements.
-        Uses a predefined set of terms to verify the page has loaded correctly.
-        
-        Args:
-            search_terms (Union[str, List[str]]): The search term(s) being used
-            
-        Returns:
-            str: Prettified HTML of the y1 element if found, empty string if not found
-        """
-        # This may need to be changed if Google changes the Trends page, which they often do, to stop us from doing exactly this.
-        # Get the trends config
-        trends_config = CONFIRM_CONFIGS['google_trends']
-            
-        # Get the number of search terms
-        num_terms = len(search_terms) if isinstance(search_terms, list) else 1
-        # Limit to maximum of 5 terms
-        num_terms = min(num_terms, 5)
-        
-        # Base terms that should always be present
-        self.print_func("Checking for expected elements on trends page...")
-        
-        # Check all terms from config in one call
-        elements = self.poll_for_text(
-            search_texts=[term['term'] for term in trends_config['terms']],
-            query_selectors=[term['queryselector'] for term in trends_config['terms']]
-        )
-        
-        if not elements:
-            self.print_func("Warning: Expected elements were not found on the page")
-            return ""
-        else:        
-            # Get the y1 element and print its outerHTML
-            self.print_func("Getting y1 element container table...")
-            y1_elements = self.get_element_by_text(
-                'y1', 
-                query_selector=trends_config['terms'][-1]['queryselector'],
-                get_container_table=True
-            )
-            
-            if y1_elements[0]['containerTable']:
-                self.print_func("Found y1 element container table.")
-                container_table  = y1_elements[0]['containerTable']
-                # Prettify the HTML using BeautifulSoup
-                soup = BeautifulSoup(container_table, 'html.parser')
-                prettified_html = soup.prettify()
-                return prettified_html
-            else:
-                self.print_func("Could not find y1 element")
-                self.print_func(f"y1_elements: {y1_elements}")
-                return ""
 
     def poll_for_text(self, search_texts: Union[str, List[str]], query_selectors: Optional[Union[str, List[str]]] = None, click: bool = False) -> List[Dict[str, str]]:
         """
@@ -493,164 +684,6 @@ class ApplescriptSafari(API_Call):
                 self.print_func(f"Error closing Safari tab: {result.err}")
         except Exception as e:
             self.print_func(f"Error executing AppleScript to close tab: {str(e)}")
-
-    def search(self, **kwargs) -> 'ApplescriptSafari':
-        """
-        Search Google Trends using AppleScript and Safari.
-        
-        Args:
-            **kwargs: Arguments passed to the parent class search method
-            
-        Returns:
-            ApplescriptSafari: Returns self for method chaining
-        """
-        # Call base class search method first to handle terms and dates
-        super().search(**kwargs)
-        # Get the processed search spec for dates
-        spec = self.search_spec
-        
-        # Create auth session if it doesn't exist
-        if self._auth_session is None:
-            self.print_func("Creating new GoogleAuthSession")
-            self._auth_session = GoogleAuthSession(
-                safari_instance=self,
-                print_func=self.print_func,
-                auth_email=self.auth_email
-            )
-        
-        # Check Google authentication
-        if not self._auth_session.is_authenticated:
-            self._auth_session.login()
-        if not self._auth_session.is_authenticated:
-            raise Exception("Google authentication login failed")
-
-        self.print_func(f"Sending ApplescriptSafari search request:")
-        self.print_func(f"  Search term: {spec.term_string}")
-        self.print_func(f"  Start date: {spec.start_date}")
-        self.print_func(f"  End date: {spec.end_date}")
-        
-        # Construct the URL
-        config = CONFIRM_CONFIGS['google_trends']
-        url_template = config['url']
-        
-        # Join search terms with commas and URL encode
-        query = quote(",".join(spec.terms))
-        self.print_func(f"Query: {query}")
-        
-        # Parse time range if provided
-        params = {
-            'date_range': spec.formatted_range_ymd,
-            'geo': self.geo,
-            'query': query
-        }
-        self.print_func(f"  Time range: {spec.formatted_range_ymd}")
-        
-        # Construct the URL
-        formatted_url = url_template.format(**params)
-        self.print_func(f"Opening URL: {formatted_url}")
-        
-        # Open URL in Safari, creating window only if needed
-        self.open_url_in_safari(formatted_url)
-        
-        # Get the raw HTML from the trends page
-        html_content = self.parse_trends_page(spec.terms[0])
-        if not html_content:
-            raise Exception("Failed to parse trends page")
-        
-        # Store the raw HTML data
-        self.raw_data = html_content
-        
-        self.print_func("Search successful!")
-        
-        # Close tab if configured to do so
-        if self.close_tabs:
-            print("Closing front Safari tab")
-            self._close_front_safari_tab()
-
-        return self
-
-    def standardize_data(self) -> 'ApplescriptSafari':
-        """
-        Standardize the raw HTML data into a common format.
-        Parses the HTML table into a list of dictionaries with date and values.
-        
-        Returns:
-            ApplescriptSafari: Returns self for method chaining
-        """
-        if not self._raw_data_history:
-            raise ValueError("No raw data available. Call search() first.")
-            
-        # Parse the HTML using BeautifulSoup
-        soup = BeautifulSoup(self.raw_data, 'html.parser')
-        
-        # Find the table
-        table = soup.find('table')
-        if not table:
-            raise ValueError("No table found in HTML data")
-            
-        # Get headers (column names)
-        headers = [th.text.strip() for th in table.find_all('th')]
-        if not headers:
-            raise ValueError("No headers found in table")
-            
-        # The first column should be 'x' (dates)
-        if headers[0] != 'x':
-            raise ValueError("First column is not 'x' (dates)")
-            
-        # Get all rows
-        rows = table.find_all('tr')[1:]  # Skip header row
-        
-        # Get search terms from search_spec
-        search_terms = self.search_spec.terms
-        if not isinstance(search_terms, list):
-            search_terms = [search_terms]
-            
-        # Transform the data into the standardized format
-        raw_date_list = []
-        data = []
-        for row in rows:
-            cells = row.find_all('td')
-            if len(cells) != len(headers):
-                continue  # Skip malformed rows
-                
-            # Parse the date
-            date_str = cells[0].text.strip()
-            raw_date_list.append(cleanup_date_str(date_str))
-            # try:
-            #     # Remove any special characters and parse the date
-            #     date_str = date_str.replace('\u202a', '').replace('\u202c', '')  # Remove LTR/RTL marks
-            #     date = datetime.strptime(date_str, '%b %d, %Y')
-            # except ValueError:
-            #     continue  # Skip rows with invalid dates
-                
-            # Get values for each column (except the date column)
-            values = []
-            for i, cell in enumerate(cells[1:], 1):
-                try:
-                    value = int(cell.text.strip())
-                    # Use the search term from search_spec
-                    search_term = search_terms[i-1] if i-1 < len(search_terms) else f"term_{i}"
-                    values.append({
-                        'value': value,
-                        'query': search_term
-                    })
-                except ValueError:
-                    continue  # Skip invalid values
-                    
-            if values:  # Only add entries that have valid values
-                standardized_entry = {
-                    'date': standardize_date_range_start(date_str),
-                    'values': values
-                }
-                data.append(standardized_entry)
-        
-        if not data:
-            raise ValueError("No valid data found in table")
-            
-        self.data = data
-        self.print_func(f"Standardized data length: {len(data)}")
-        self.raw_date_list = raw_date_list
-        return self
 
 def get_escaped_js_for_text_search_v3(
     search_text: str,

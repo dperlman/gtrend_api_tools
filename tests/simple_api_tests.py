@@ -11,7 +11,7 @@ CLOSE_TABS = True # Close tabs after each search. This is useful for Applescript
 #### Note that if we ever implement a corresponding browser-based API for Windows or Linux,
 #### we will want to make sure to also add this option for those.
 
-def test_api(api_instance, api_name, start_date, end_date, search_term, verbose: bool = False):
+def test_api(api_instance, api_name, start_date, end_date, search_term, verbose: bool = True):
     """Test an API instance with the specified parameters and save results to files."""
     print(f"\n{'='*50}")
     print(f"Testing {api_name}")
@@ -23,11 +23,15 @@ def test_api(api_instance, api_name, start_date, end_date, search_term, verbose:
         # Get both raw and standardized data
         api_instance.search(
             search_term=search_term,
-            start_date=start_date if start_date else None,
-            end_date=end_date if end_date else None
+            start=start_date if start_date else None,
+            end=end_date if end_date else None,
+            verbose=verbose
         )
         raw_data = api_instance.raw_data
         standardized_data = api_instance.standardize_data().data
+        print(f"Standardized data: {standardized_data}")
+        dataframe = api_instance.make_dataframe().dataframe
+        print(f"Dataframe: {dataframe}")
 
         # Create test_outputs directory if it doesn't exist
         os.makedirs('test_outputs', exist_ok=True)
@@ -47,7 +51,14 @@ def test_api(api_instance, api_name, start_date, end_date, search_term, verbose:
         with open(standardized_output_file, 'w') as f:
             f.write(standardized_data_str)
         print(f"Standardized results ({len(standardized_data)} records) saved to {standardized_output_file}")
-            
+        
+        # Save dataframe to file
+        # Changed to use pandas DataFrame pickle method instead of CSV for saving
+        dataframe_output_file = os.path.join('test_outputs', f"{api_name}_{search_term.replace(' ', '_')}_{current_time}_dataframe.pkl")
+        dataframe.to_pickle(dataframe_output_file)
+        print(f"Dataframe (pickled) saved to {dataframe_output_file}")
+        
+        
     except Exception as e:
         print(f"Error testing {api_name}: {str(e)}")
         print(traceback.format_exc())
@@ -57,15 +68,18 @@ def main():
     config = load_config()
     
     # Get verbose flag from config or default to True
-    verbose = config.get('verbose', False)
+    # Actually this is just a test, so we'll set it to True for now.
+    #verbose = config.get('verbose', False)
+    verbose = True
     
     tor_control_password = config.get('tor', {}).get('control_password')
 
     start_date = "2024-01-01"
-    #end_date = "2024-09-26"
-    end_date = "2029-03-14" # 1899 days
-    #end_date = "2029-03-15" # 1900 days
-    #end_date = "2029-03-16" # 1901 days
+    end_date = "2024-01-07" # 6 days, gives hourly granularity
+    #end_date = "2024-09-26" # 265 days, gives daily granularity
+    #end_date = "2029-03-14" # 1899 days, gives weekly granularity
+    #end_date = "2029-03-15" # 1900 days, gives weekly granularity
+    #end_date = "2029-03-16" # 1901 days, gives monthly granularity
     
     start_dt = datetime.strptime(start_date, "%Y-%m-%d")
     end_dt = datetime.strptime(end_date, "%Y-%m-%d")
@@ -83,7 +97,7 @@ def main():
         #"SerpWow": SerpWow(api_key=config.get('api_keys', {}).get('serpwow'), verbose=verbose),
         #"SearchApi": SearchApi(api_key=config.get('api_keys', {}).get('searchapi'), verbose=verbose),
         {"name": "ApplescriptSafari", "api": applescript_safari_instance, "search_term": "coffee,tea"},
-        {"name": "ApplescriptSafari", "api": applescript_safari_instance, "search_term": "car,truck"},
+        #{"name": "ApplescriptSafari", "api": applescript_safari_instance, "search_term": "car,truck"},
         #"TrendsPy": TrendsPy(verbose=verbose, tor_control_password=tor_control_password, proxy="127.0.0.1:9150", change_identity=True),
         #"DummyApi": DummyApi(verbose=verbose)
     ]
