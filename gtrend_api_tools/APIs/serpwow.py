@@ -24,69 +24,31 @@ class Serpwow(API_Call):
         """
         super().__init__(api_key=api_key, api_endpoint=api_endpoint, **kwargs)
     
-    def search(self, **kwargs) -> 'Serpwow':
-        """
-        Search Google Trends using the Serpwow API.
-        
-        Args:
-            **kwargs: Arguments passed to the parent class search method
-            
-        Returns:
-            Serpwow: Returns self for method chaining
-        """
-        # Call base class search method first to handle terms and dates
-        super().search(**kwargs)
-        # Get the processed search spec for dates
-        spec = self.search_spec
-        
-        self.print_func(f"Sending Serpwow search request:")
-        self.print_func(f"  Search term: {spec.term_string}")
-        self.print_func(f"  Search date range: {spec.str.search_range_mdy}")
-        
-        # Parse time range if provided
-        # Weirdly, the Serpwow API expects the date range in the format MM/DD/YYYY and fails if it's in the format YYYY-MM-DD
-        time_period_min = spec.str.search_start_mdy
-        time_period_max = spec.str.search_end_mdy
-        
+    def _request_params(self) -> Dict[str, Any]:
         # Set up the request parameters
         params = {
+            'q': self.search_spec.term_string,
             'api_key': self.api_key,
-            'engine': 'google',
-            'search_type': 'trends',
-            'q': spec.term_string,
             'data_type': 'INTEREST_OVER_TIME',
             'time_period': 'custom',
-            'time_period_min': time_period_min,
-            'time_period_max': time_period_max,
-            'trends_geo': self.geo,
-            'trends_tz': str(self.tz),
-            'hl': self.language
+            'time_period_min': self.search_spec.str.search_start_mdy,
+            'time_period_max': self.search_spec.str.search_end_mdy,
+            'engine': 'google',
+            'search_type': 'trends'
         }
-        
-        # Add optional parameters if they exist and are not None
-        if hasattr(self, 'cat') and self.cat is not None:
-            params['trends_category'] = str(self.cat)
-        if hasattr(self, 'region') and self.region is not None:
+        if self.geo:
+            params['trends_geo'] = self.geo
+        if self.tz:
+            params['trends_tz'] = self.tz
+        if self.region:
             params['trends_region'] = self.region
-        if hasattr(self, 'gprop') and self.gprop is not None:
-            params['trends_gprop'] = self.gprop
-        
-        # Prepare the request to print the full URL
-        req = requests.Request('GET', self.api_endpoint, params=params)
-        prepared = req.prepare()
-        self.print_func(f"  Full request URL: {prepared.url}")
-
-        # Make the API call using requests
-        response = requests.Session().send(prepared)
-        response.raise_for_status()  # Raise an exception for bad status codes
-        
-        # Parse the JSON response
-        self.raw_data = response.json()
-        
-        self.print_func("  Search successful!")
-        #self.print_func(self.raw_data)
-        
-        return self
+        if self.cat:
+            params['trends_category'] = self.cat
+        if self.language:
+            params['hl'] = self.language
+        if self.gprop:
+            params['gprop'] = self.gprop
+        return params
 
 
     def standardize_data(self) -> 'Serpwow':

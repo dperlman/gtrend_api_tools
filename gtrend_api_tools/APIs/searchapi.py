@@ -25,70 +25,30 @@ class SearchApi(API_Call):
         """
         super().__init__(api_key=api_key, api_endpoint=api_endpoint, **kwargs)
 
-    def search(self, **kwargs) -> 'SearchApi':
-        """
-        Search Google Trends using the SearchApi.
-        
-        Args:
-            **kwargs: Arguments passed to the parent class search method
-            
-        Returns:
-            SearchApi: Returns self for method chaining
-        """
-        # Call base class search method first to handle terms and dates
-        super().search(**kwargs)
-        # Get the processed search spec for dates
-        spec = self.search_spec
-        
-        self.print_func(f"Sending SearchApi search request:")
-        self.print_func(f"  Search term: {spec.term_string}")
-        self.print_func(f"  Search date range: {spec.str.search_range_ymd}")
-        
-        try:
-            # Set up the request parameters with only the allowed parameters
-            params = {
-                'engine': 'google_trends',
-                'api_key': self.api_key,
-                'data_type': 'TIMESERIES',
-                'q': spec.term_string,
-                'geo': self.geo,
-                'tz': str(self.tz),
-                'language': self.language
-            }
-            
-            # Add optional parameters if they exist and are not None
-            if hasattr(self, 'cat') and self.cat is not None:
-                params['cat'] = str(self.cat)
-            if hasattr(self, 'region') and self.region is not None:
-                params['region'] = self.region
-            if hasattr(self, 'gprop') and self.gprop is not None:
-                params['gprop'] = self.gprop
-            
-            # Parse time range if provided
-            params['time'] = spec.str.search_range_ymd
-            self.print_func(f"  Time range: {spec.str.search_range_ymd}")
-            
-            # Make the HTTP GET request
-            response = requests.get(self.api_endpoint, params=params)
-            response.raise_for_status()  # Raise an exception for bad status codes
-            
-            # Parse the JSON response
-            self.raw_data = response.json()
-            
-            # Check if there's an error in the results
-            if isinstance(self.raw_data, dict) and "error" in self.raw_data:
-                error_msg = self.raw_data["error"]
-                self.print_func(f"  Search failed: {error_msg}")
-                raise Exception(error_msg)
-            
-            self.print_func("  Search successful!")
-            #self.print_func(self.raw_data)
-            
-            return self
-                    
-        except Exception as e:
-            self.print_func(f"  Search failed: {str(e)}")
-            raise
+                
+    def _request_params(self) -> Dict[str, Any]:
+        # Set up the request parameters
+        params = {
+            'q': self.search_spec.term_string,
+            'time': self.search_spec.str.search_range_ymd,
+            'api_key': self.api_key,
+            'data_type': 'TIMESERIES',
+            'engine': 'google_trends'
+        }
+        if self.geo:
+            params['geo'] = self.geo
+        if self.tz:
+            params['tz'] = self.tz
+        if self.region:
+            params['region'] = self.region
+        if self.cat:
+            params['cat'] = self.cat
+        if self.language:
+            params['language'] = self.language
+        if self.gprop:
+            params['gprop'] = self.gprop
+        return params
+
 
     def standardize_data(self) -> 'SearchApi':
         """
@@ -127,19 +87,3 @@ class SearchApi(API_Call):
         self.raw_date_list = raw_date_list
         self.data = data
         return self
-
-# def search_searchapi(
-#     **kwargs
-# ) -> Union[pd.DataFrame, Dict[str, Any]]:
-#     """
-#     Search Google Trends using the SearchApi.
-    
-#     Args:
-#         **kwargs: Arguments passed to the parent class search method
-#         **kwargs: Additional keyword arguments passed to API_Call
-        
-#     Returns:
-#         Union[pd.DataFrame, Dict[str, Any]]: Standardized search results
-#     """
-#     searchapi = SearchApi(**locals())
-#     return searchapi.search(**kwargs).standardize_data().data

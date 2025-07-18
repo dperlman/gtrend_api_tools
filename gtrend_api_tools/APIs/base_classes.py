@@ -123,6 +123,8 @@ class API_Call:
         self.base_trends_request_url = self._base_trends_request_url()
         self.print_func(f"Base trends request URL: {self.base_trends_request_url}")
 
+        if self.api_endpoint is None:
+            return self # that's it, we're not going to do the requests if we don't have an endpoint
         self.request_headers = self._request_headers()
         self.print_func(f"Request headers: {self.request_headers}")
 
@@ -144,6 +146,14 @@ class API_Call:
         # Make the request
         self.make_request()
 
+        # Check if there's an error in the results
+        if isinstance(self.raw_data, dict) and "error" in self.raw_data:
+            error_msg = self.raw_data["error"]
+            self.print_func(f"{self.__class__.__name__} Search failed: {error_msg}")
+            raise Exception(error_msg)
+        
+        # Print success message
+        self.print_func(f"{self.__class__.__name__} request sent successfully!")
         return self
 
     def _base_trends_request_url(self) -> str:
@@ -174,8 +184,6 @@ class API_Call:
         Set up the request headers
         """
         headers = {}
-        if self.api_key:
-            headers['Authorization'] = f'Bearer {self.api_key}'
         return headers
 
     def _request_params(self) -> Dict[str, Any]:
@@ -207,12 +215,17 @@ class API_Call:
         """
         Prepare the request to print the full URL
         """
+        kwargs = {}
+        if self.request_params:
+            kwargs['params'] = self.request_params
+        if self.request_headers:
+            kwargs['headers'] = self.request_headers
+        if self.request_data:
+            kwargs['json'] = self.request_data
         req = requests.Request(
             self.method,
             self.api_endpoint,
-            params=self.request_params,
-            headers=self.request_headers,
-            json=self.request_data
+            **kwargs
         )
         self.request = req
         self.prepared_request = req.prepare()

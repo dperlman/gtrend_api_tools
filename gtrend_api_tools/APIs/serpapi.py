@@ -25,75 +25,29 @@ class SerpApi(API_Call):
         """
         super().__init__(api_key=api_key, api_endpoint=api_endpoint, **kwargs)
 
-    def search(self, **kwargs) -> 'SerpApi':
-        """
-        Search Google Trends using SerpApi.
-        
-        Args:
-            **kwargs: Arguments passed to the parent class search method
-            
-        Returns:
-            SerpApi: Returns self for method chaining
-        """
-        # Call base class search method first to handle terms and dates
-        super().search(**kwargs)
 
-        self.print_func(f"Sending SerpApi search request:")
-        self.print_func(f"  Search term: {self.search_spec.term_string}")
-        self.print_func(f"  Search date range: {self.search_spec.str.search_range_ymd}")
-        
-        try:
-            # Set up the request parameters
-            params = {
-                'api_key': self.api_key,
-                'engine': 'google_trends',
-                'q': self.search_spec.term_string,
-                'geo': self.geo,
-                'hl': self.language
-            }
-            
-            # Add optional parameters if they exist and are not None
-            if hasattr(self, 'cat') and self.cat is not None:
-                params['cat'] = self.cat
-            if hasattr(self, 'region') and self.region is not None:
-                params['region'] = self.region
-            if hasattr(self, 'gprop') and self.gprop is not None:
-                params['gprop'] = self.gprop
-            
-            # Use the SearchSpec's date range
-            # params['date'] = self.search_spec.str.search_range_mdy
-            # self.print_func(f"  Time range: {self.search_spec.str.search_range_mdy}")
-            params['date'] = self.search_spec.str.search_range_ymd
-            self.print_func(f"  Time range: {self.search_spec.str.search_range_ymd}")
+    def _request_params(self) -> Dict[str, Any]:
+        # Set up the request parameters
+        params = {
+            'q': self.search_spec.term_string,
+            'date': self.search_spec.str.search_range_ymd,
+            'api_key': self.api_key,
+            'engine': 'google_trends'
+        }
+        if self.geo:
+            params['geo'] = self.geo
+        if self.tz:
+            params['tz'] = self.tz
+        if self.region:
+            params['region'] = self.region
+        if self.cat:
+            params['cat'] = self.cat
+        if self.language:
+            params['hl'] = self.language
+        if self.gprop:
+            params['gprop'] = self.gprop
+        return params
 
-            # Prepare the request to print the full URL
-            req = requests.Request('GET', self.api_endpoint, params=params)
-            prepared = req.prepare()
-            self.print_func(f"  Full request URL: {prepared.url}")
-
-            # Make the API call using requests
-            response = requests.Session().send(prepared)
-            response.raise_for_status()  # Raise an exception for bad status codes
-            
-            # Parse the JSON response
-            self.raw_data = response.json()
-            
-            # Check if there's an error in the results
-            if isinstance(self.raw_data, dict) and "error" in self.raw_data:
-                error_msg = self.raw_data["error"]
-                self.print_func(f"  Search failed: {error_msg}")
-                raise Exception(error_msg)
-            
-            self.print_func("  Search successful!")
-            
-            return self
-                    
-        except requests.exceptions.RequestException as e:
-            self.print_func(f"  Search failed: {str(e)}")
-            raise
-        except Exception as e:
-            self.print_func(f"  Search failed: {str(e)}")
-            raise
 
     def standardize_data(self) -> 'SerpApi':
         """

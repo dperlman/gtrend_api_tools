@@ -180,6 +180,7 @@ class ApplescriptSafari(API_Call):
         close_tabs: bool = False,
         poll_max_tries: int = 3,
         poll_wait_time: int = 1,
+        api_endpoint: Optional[str] = None,
         **kwargs
     ):
         """
@@ -190,9 +191,12 @@ class ApplescriptSafari(API_Call):
             close_tabs (bool): If True, close the first Safari tab before each search. Defaults to False.
             poll_max_tries (int): Maximum number of attempts to find text. Defaults to 3.
             poll_wait_time (int): Time to wait between attempts in seconds. Defaults to 1.
+            api_endpoint (Optional[str]): The API endpoint URL. Must be None for this class because we aren't calling an endpoint.
             **kwargs: Additional keyword arguments passed to API_Call
         """
-        super().__init__(**kwargs)
+        if api_endpoint is not None:
+            raise ValueError("api_endpoint must be None for this class because we aren't calling an endpoint.")
+        super().__init__(api_endpoint=api_endpoint, **kwargs)
         self._window_created = False
         self.auth_email = auth_email
         self._auth_session = None
