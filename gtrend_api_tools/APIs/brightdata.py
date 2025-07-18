@@ -6,126 +6,101 @@ import pandas as pd
 import unicodedata
 from gtrend_api_tools.APIs.base_classes import API_Call
 from gtrend_api_tools.search_specs import SearchSpec, DateRange
-from gtrend_api_tools.date_strings import cleanup_date_str, standardize_date_range_start
+from gtrend_api_tools.date_strings import parse_date_str, cleanup_date_str, standardize_date_time_str
 
 class Brightdata(API_Call):
     def __init__(
         self,
         api_key: str,
-        api_endpoint: str = "https://api.brightdata.com/v1/google/trends",
+        api_endpoint: str = "https://api.brightdata.com/request",
+        method: str = "POST",
         **kwargs
     ):
         """
-        Initialize the SerpApi class.
+        Initialize the Brightdata class.
         
         Args:
-            api_key (str): Your SerpAPI API key
-            api_endpoint (str): The SerpAPI endpoint URL
+            api_key (str): Your Brightdata API key
+            api_endpoint (str): The Brightdata endpoint URL
             **kwargs: Additional keyword arguments passed to API_Call
         """
-        raise NotImplementedError("Brightdata is not implemented yet")
-        super().__init__(api_key=api_key, api_endpoint=api_endpoint, **kwargs)
-        self.base_url = api_endpoint
+        #raise NotImplementedError("Brightdata is not implemented yet")
+        super().__init__(api_key=api_key, api_endpoint=api_endpoint, method=method, **kwargs)
 
-    def search(self, **kwargs) -> 'SerpApi':
+    def _request_headers(self) -> Dict[str, Any]:
         """
-        Search Google Trends using SerpApi.
-        
-        Args:
-            **kwargs: Arguments passed to the parent class search method
-            
-        Returns:
-            SerpApi: Returns self for method chaining
+        Set up the request headers
         """
-        # Call base class search method first to handle terms and dates
-        super().search(**kwargs)
-        # Get the processed search spec for dates
-        spec = self.search_spec
-        
-        self.print_func(f"Sending SerpApi search request:")
-        self.print_func(f"  Search term: {self.search_spec.term_string}")
-        self.print_func(f"  Start date: {self.search_spec.start_date}")
-        self.print_func(f"  End date: {self.search_spec.end_date}")
-        
-        try:
-            # Set up the request parameters
-            params = {
-                'api_key': self.api_key,
-                'engine': 'google_trends',
-                'q': self.search_spec.term_string,
-                'geo': self.geo,
-                'hl': self.language
-            }
-            
-            # Add optional parameters if they exist and are not None
-            if hasattr(self, 'cat') and self.cat is not None:
-                params['cat'] = self.cat
-            if hasattr(self, 'region') and self.region is not None:
-                params['region'] = self.region
-            if hasattr(self, 'gprop') and self.gprop is not None:
-                params['gprop'] = self.gprop
-            
-            # Use the SearchSpec's date range
-            params['date'] = self.search_spec.formatted_range_ymd
-            self.print_func(f"  Time range: {self.search_spec.formatted_range_ymd}")
+        headers = {
+            'Authorization': f'Bearer {self.api_key}',
+            'Content-Type': 'application/json'
+        }
+        if self.api_key:
+            headers['Authorization'] = f'Bearer {self.api_key}'
+        return headers
 
-            # Prepare the request to print the full URL
-            req = requests.Request('GET', self.base_url, params=params)
-            prepared = req.prepare()
-            self.print_func(f"  Full request URL: {prepared.url}")
+    def _request_params(self) -> Dict[str, Any]:
+        # Set up the request parameters
+        params = None
+        return params
 
-            # Make the API call using requests
-            response = requests.Session().send(prepared)
-            response.raise_for_status()  # Raise an exception for bad status codes
-            self.raw_data = response.json()
-            
-            # Check if there's an error in the results
-            if isinstance(self.raw_data, dict) and "error" in self.raw_data:
-                error_msg = self.raw_data["error"]
-                self.print_func(f"  Search failed: {error_msg}")
-                raise Exception(error_msg)
-            
-            self.print_func("  Search successful!")
-            
-            return self
-                    
-        except requests.exceptions.RequestException as e:
-            self.print_func(f"  Search failed: {str(e)}")
-            raise
-        except Exception as e:
-            self.print_func(f"  Search failed: {str(e)}")
-            raise
+    def _request_data(self) -> Dict[str, Any]:
+        """
+        Set up the request data
+        """
+        # We have to add the parameters brd_trends and brd_json the parameters for the base_trends_request_url
+        # which is kind of weird, but that's how Brightdata wants it.
+        brd_base_trends_request = self.base_trends_request
+        brd_base_trends_request.params['brd_trends'] = 'timeseries'
+        brd_base_trends_request.params['brd_json'] = '1'
+        brd_base_trends_request_prepared = brd_base_trends_request.prepare()
+        data = {
+            "zone": "trends",
+            "url": brd_base_trends_request_prepared.url,
+            "format": "raw"
+        }
+        return data
 
-    def standardize_data(self) -> 'SerpApi':
+
+    def standardize_data(self) -> 'Brightdata':
         """
         Standardize the raw data into a common format.
         Transforms the interest_over_time data into a list of dictionaries with date and values.
         
         Returns:
-            SerpApi: Returns self for method chaining
+            Brightdata: Returns self for method chaining
         """
         if not hasattr(self, 'raw_data') or not self.raw_data:
             raise ValueError("No raw data available. Call search() first.")
             
-        if 'interest_over_time' not in self.raw_data:
-            raise ValueError("Raw data does not contain interest_over_time data")
-            
-        # Extract the timeline data
-        timeline = self.raw_data['interest_over_time']['timeline_data']
-        
+        def check_for_interest_over_time(widget):
+            if 'data' in widget and 'default' in widget['data'] and 'timelineData' in widget['data']['default']:
+                return True
+            return False
+
+        raw_keywords = self.raw_data.get('keywords', [])
+        keywords = [keyword['keyword'] for keyword in raw_keywords]
+
+        widgets = self.raw_data.get('widgets', [])
+        timeline = []
+        for widget in widgets:
+            if check_for_interest_over_time(widget):
+                timeline = widget['data']['default']['timelineData']
+                break
+
         # Transform the data into the standardized format
         raw_date_list = []
         data = []
         for entry in timeline:
-            raw_date_list.append(cleanup_date_str(entry['date']))
+            raw_date_list.append(cleanup_date_str(entry['formattedTime']))
             standardized_entry = {
-                'date': standardize_date_range_start(entry['date']),
+                'date': standardize_date_time_str(entry['formattedTime']),
                 'values': [
                     {
-                        'value': item['extracted_value'],
-                        'query': item['query']
+                        'value': entry['formattedValue'][i],
+                        'query': keywords[i]
                     }
-                    for item in entry['values']
+                    for i, _ in enumerate(entry['formattedValue'])
                 ]
             }
             data.append(standardized_entry)
@@ -134,18 +109,14 @@ class Brightdata(API_Call):
         self.data = data
         return self
 
-# def search_serpapi(
-#     **kwargs
-# ) -> Union[pd.DataFrame, Dict[str, Any]]:
-#     """
-#     Search Google Trends using the SerpAPI library.
-    
-#     Args:
-#         **kwargs: Arguments passed to the parent class search method
-#         **kwargs: Additional keyword arguments passed to API_Call
-        
-#     Returns:
-#         Union[pd.DataFrame, Dict[str, Any]]: Standardized search results
-#     """
-#     serp = SerpApi(**locals())
-#     return serp.search(**kwargs).standardize_data().data 
+"""
+
+curl https://api.brightdata.com/request \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer 62b71d03b41ada34ac05851309d12411e2ddbc1ff2af32ae9a81f186204f015c" \
+  -d '{
+        "zone": "trends",
+        "url": "https://trends.google.com/trends/explore?q=coffee,tea&geo=US&brd_trends=timeseries&brd_json=1",
+        "format": "raw"
+      }'
+"""

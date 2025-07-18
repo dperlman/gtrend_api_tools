@@ -5,6 +5,7 @@ from gtrend_api_tools.utils import _print_if_verbose, load_config
 from gtrend_api_tools.APIs.api_utils import standard_dict_to_df
 from gtrend_api_tools.search_specs import DateRange, SearchSpec
 from gtrend_api_tools.date_strings import cleanup_date_str
+import requests
 
 class API_Call:
     """
@@ -27,7 +28,9 @@ class API_Call:
         verbose: bool = False,
         print_func: Optional[Callable] = None,
         tor_control_password: Optional[str] = None,
-        api_endpoint: Optional[str] = None,
+        api_endpoint: Optional[str] = "https://trends.google.com/trends/explore", # put the actual API endpoint for the specific API subclass here
+        base_trends_endpoint: Optional[str] = "https://trends.google.com/trends/explore", # leave this the same for reference purposes
+        method: str = 'GET',
         granularity: str = 'D',
         **kwargs
     ):
@@ -72,6 +75,8 @@ class API_Call:
         self.verbose = verbose
         self.tor_control_password = tor_control_password
         self.api_endpoint = api_endpoint
+        self.base_trends_endpoint = base_trends_endpoint
+        self.method = method
         self.granularity = granularity
         self.kwargs = kwargs
         self._search_history = []
@@ -103,14 +108,131 @@ class API_Call:
         Returns:
             API_Call: Returns self for method chaining. The raw data is stored in self.raw_data
         """
+        self.print_func(f"Preparing {self.__class__.__name__} search request:")
         if search_spec is not None and isinstance(search_spec, SearchSpec):
             # Use provided search_spec directly
             self.search_spec = search_spec
         else:
             # Pass all kwargs to SearchSpec constructor
             self.search_spec = SearchSpec(**kwargs)
+        self.print_func(f"Search spec: {self.search_spec}")
+
+        self.print_func(f"  Search term: {self.search_spec.term_string}")
+        self.print_func(f"  Search date range: {self.search_spec.str.search_range_ymd}")
+    
+        self.base_trends_request_url = self._base_trends_request_url()
+        self.print_func(f"Base trends request URL: {self.base_trends_request_url}")
+
+        self.request_headers = self._request_headers()
+        self.print_func(f"Request headers: {self.request_headers}")
+
+        self.request_params = self._request_params()
+        self.print_func(f"Search params: {self.request_params}")
+        
+        self.request_data = self._request_data()
+        self.print_func(f"Request data: {self.request_data}")
+
+        # Prepare the request
+        self.prepare_request()
+
+        if self.__class__.__name__ == "API_Call":
+            print(f"Base class {self.__class__.__name__} prepares a request directly to Google Trends.")
+            print("We are about to send the request, but it is unlikely this will be useful in any way.")
+            print("Google Trends URL:")
+            print(self.prepared_request.url)
+
+        # Make the request
+        self.make_request()
 
         return self
+
+    def _base_trends_request_url(self) -> str:
+        """
+        Construct the base request URL for Google Trends
+        """
+        params = {
+            'q': self.search_spec.term_string,
+            'date': self.search_spec.str.search_range_ymd
+        }
+        if self.geo:
+            params['geo'] = self.geo
+        if self.tz:
+            params['tz'] = self.tz
+        if self.region:
+            params['region'] = self.region
+        if self.cat:
+            params['cat'] = self.cat
+        if self.language:
+            params['hl'] = self.language
+        req = requests.Request('GET', self.base_trends_endpoint, params=params)
+        self.base_trends_request = req
+        self.prepared_base_trends_request = req.prepare()
+        return self.prepared_base_trends_request.url
+
+    def _request_headers(self) -> Dict[str, Any]:
+        """
+        Set up the request headers
+        """
+        headers = {}
+        if self.api_key:
+            headers['Authorization'] = f'Bearer {self.api_key}'
+        return headers
+
+    def _request_params(self) -> Dict[str, Any]:
+        # Set up the request parameters
+        params = {
+            'q': self.search_spec.term_string,
+            'date': self.search_spec.str.search_range_ymd
+        }
+        if self.geo:
+            params['geo'] = self.geo
+        if self.tz:
+            params['tz'] = self.tz
+        if self.region:
+            params['region'] = self.region
+        if self.cat:
+            params['cat'] = self.cat
+        if self.language:
+            params['hl'] = self.language
+        return params
+
+    def _request_data(self) -> Dict[str, Any]:
+        """
+        Set up the request data
+        """
+        data = {}
+        return data
+
+    def prepare_request(self) -> None:
+        """
+        Prepare the request to print the full URL
+        """
+        req = requests.Request(
+            self.method,
+            self.api_endpoint,
+            params=self.request_params,
+            headers=self.request_headers,
+            json=self.request_data
+        )
+        self.request = req
+        self.prepared_request = req.prepare()
+        self.print_func(f"  Full request URL: {self.prepared_request.url}")
+
+    def make_request(self) -> None:
+        """
+        Make the request to the API
+        """
+        # print(self.prepared_request.url)
+        # print(self.prepared_request.headers)
+        # print(self.prepared_request.body)
+        # print(self.prepared_request.method)
+
+        self.response = requests.Session().send(self.prepared_request)
+        self.response.raise_for_status()
+        self.raw_data = self.response.json()
+        self.print_func("  Search successful!")
+        #self.print_func(f"  Raw data: {self.raw_data}")
+
 
     def standardize_data(self) -> 'API_Call':
         """

@@ -18,6 +18,13 @@ def parse_date_str(date_str: str) -> datetime:
         parsed_date = dateparser.parse(date_str, settings={'TIMEZONE': tz})
     return parsed_date
 
+def standardize_date_time_str(date_time_str: str) -> str:
+    """
+    Standardize a date time string to a YYYY-MM-DDTHH:MM:SS format.
+    """
+    clean_date_time_str = cleanup_date_str(date_time_str)
+    parsed_date = parse_date_str(clean_date_time_str)
+    return parsed_date.strftime("%Y-%m-%dT%H:%M:%S")
 
 def split_date_range_str(date_str: str) -> tuple:
     """

@@ -20,6 +20,7 @@ from .serpapi_python import SerpApiPython
 from .applescript_safari import ApplescriptSafari
 from .dummy_api import DummyApi
 from .win_uiauto_edge import WinUiautoEdge
+from .brightdata import Brightdata
 
 # Load API metadata from configuration
 available_apis = load_api_config()
@@ -39,7 +40,7 @@ def get_api_info(name: str):
     return available_apis.get(name)
 
 # Make all API classes and utility functions available
-__all__ = ['SerpApi', 'Serpwow', 'SearchApi', 'TrendsPy', 'SerpApiPython', 'ApplescriptSafari', 'DummyApi', 'WinUiautoEdge',
+__all__ = ['SerpApi', 'Serpwow', 'SearchApi', 'TrendsPy', 'SerpApiPython', 'ApplescriptSafari', 'DummyApi', 'WinUiautoEdge', 'Brightdata',
            'available_apis', 'get_free_apis', 'get_paid_apis', 'get_api_info',
            'change_tor_identity', 'standard_dict_to_df']
 
