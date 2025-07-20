@@ -51,19 +51,10 @@ class DummyApi(API_Call):
         )
         self.fill_value = fill_value
 
-    def search(self, **kwargs) -> 'DummyApi':
+    def make_request(self) -> None:
         """
-        Generate dummy data for testing purposes.
-        
-        Args:
-            **kwargs: Arguments passed to the parent class search method
-        
-        Returns:
-            DummyApi: Returns self for method chaining
+        Override make_request to generate dummy data instead of making HTTP requests.
         """
-
-        # Call base class search method first to handle terms and dates
-        super().search(**kwargs)
         # Get the processed search spec for dates
         spec = self.search_spec
             
@@ -117,7 +108,6 @@ class DummyApi(API_Call):
                 index=spec.datetime_index,
                 columns=sanitized_columns
             )
-            self.dataframe = df
             # Fill with constant value
             for date in spec.datetime_index:
                 entry = {
@@ -132,12 +122,18 @@ class DummyApi(API_Call):
                 }
                 data.append(entry)
         
-        # Store the same data as raw_data for consistency
-        self.raw_data = data
-        self.data = data
-        self.dataframe = df
-
-        return self 
+        # Create TrendSearchResult with the generated data and DataFrame
+        from gtrend_api_tools.APIs.base_classes import TrendSearchResult
+        
+        self.search_result = TrendSearchResult(
+            raw_data=data,
+            search_spec=self.search_spec,
+            converter=self.raw_data_converter,  # Use the base class converter
+            data=data,  # Pre-computed standardized data
+            dataframe=df  # Pre-computed DataFrame
+        )
+        
+        self.print_func("  Dummy data generated successfully!")
     
     # Overriding the default method for creating the dataframe to do nothing (pass) as instructed.
     def make_dataframe(self):

@@ -6,7 +6,7 @@ Provides functionality to execute multiple searches with different methods.
 from typing import Union, List, Dict, Any, Optional
 from types import SimpleNamespace
 from gtrend_api_tools.search_specs import SearchSpec
-from gtrend_api_tools.APIs.base_classes import API_Call
+from gtrend_api_tools.APIs.base_classes import API_Call, TrendSearchResult
 
 
 class TrendSearchBatch:
@@ -50,9 +50,9 @@ class TrendSearchBatch:
         # Process and validate spec_list
         self._process_spec_list()
         
-        # Initialize results storage
-        self.results = []
-        self.errors = []
+        # Initialize results storage - now stores TrendSearchResult objects
+        self.results: List[TrendSearchResult] = []
+        self.errors: List[Dict[str, Any]] = []
         self.completed_count = 0
         self.total_count = len(self.spec_list)
     
@@ -173,8 +173,40 @@ class TrendSearchBatch:
         Returns:
             TrendSearchBatch: Returns self for method chaining
         """
-        # TODO: Implement sequential execution
-        raise NotImplementedError("Iterate method not yet implemented")
+        # Reset results and progress
+        self.results = []
+        self.errors = []
+        self.completed_count = 0
+        
+        # Execute each search specification sequentially
+        for i, search_spec in enumerate(self.spec_list):
+            try:
+                # Execute the search using the provided API instance
+                api_instance.search(search_spec=search_spec)
+                
+                # Get the search result from the API instance
+                search_result = api_instance.search_result
+                
+                # Store the result
+                self.results.append(search_result)
+                
+                # Update progress
+                self.completed_count += 1
+                
+            except Exception as e:
+                # Store error information
+                error_info = {
+                    'index': i,
+                    'search_spec': search_spec,
+                    'error': str(e),
+                    'error_type': type(e).__name__
+                }
+                self.errors.append(error_info)
+                
+                # Still increment completed count since we attempted this search
+                self.completed_count += 1
+        
+        return self
     
     def _execute_async_poll(self, api_instance: API_Call) -> 'TrendSearchBatch':
         """
@@ -202,12 +234,12 @@ class TrendSearchBatch:
         # TODO: Implement async execution with webhooks
         raise NotImplementedError("Async webhook method not yet implemented")
     
-    def get_results(self) -> List[Dict[str, Any]]:
+    def get_results(self) -> List[TrendSearchResult]:
         """
         Get the results from the batch execution.
         
         Returns:
-            List[Dict[str, Any]]: List of search results
+            List[TrendSearchResult]: List of search results
         """
         return self.results
     
