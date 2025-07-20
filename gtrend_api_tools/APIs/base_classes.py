@@ -2,10 +2,114 @@ from typing import Union, List, Optional, Dict, Any, Callable
 from datetime import datetime
 import pandas as pd
 from gtrend_api_tools.utils import _print_if_verbose, load_config
-from gtrend_api_tools.APIs.api_utils import standard_dict_to_df
+from gtrend_api_tools.APIs.api_utils import standard_dict_to_df, load_api_config
 from gtrend_api_tools.search_specs import DateRange, SearchSpec
-from gtrend_api_tools.date_strings import cleanup_date_str
 import requests
+
+
+class TrendSearchResult:
+    """
+    A class to hold the results of a Google Trends search.
+    
+    This class encapsulates the raw data, standardized data, and DataFrame
+    from a single search operation.
+    """
+    
+    def __init__(
+        self,
+        raw_data: Any,
+        converter: Callable[[Any], Any],
+        data: Optional[Any] = None,
+        dataframe: Optional[pd.DataFrame] = None,
+        search_spec: Optional[SearchSpec] = None
+    ):
+        """
+        Initialize a TrendSearchResult.
+        
+        Args:
+            raw_data (Any): The raw data from the API response
+            converter (Callable[[Any], Any]): Function to convert raw_data to data. Required.
+            data (Optional[Any]): The standardized data. If None, will be converted from raw_data using converter
+            dataframe (Optional[pd.DataFrame]): The pandas DataFrame. If None, will be created from data
+            search_spec (Optional[SearchSpec]): The search specification that produced this result
+        """
+        # Validate converter
+        if not callable(converter):
+            raise ValueError("converter must be callable")
+        
+        # Handle raw_data and data logic
+        if raw_data is None:
+            if data is None:
+                raise ValueError("Either raw_data or data must be provided")
+            self.raw_data = data
+        else:
+            self.raw_data = raw_data
+            
+        self.converter = converter
+        self._data = data
+        self._dataframe = dataframe
+        self.search_spec = search_spec
+    
+    
+    @property
+    def data(self) -> Any:
+        """
+        Get the standardized data.
+        If data hasn't been explicitly set, converts raw_data using the converter.
+        
+        Returns:
+            Any: The standardized data
+        """
+        # If _data is None (no explicit data provided), convert using converter
+        if self._data is None:
+            self._data = self.converter(self.raw_data)
+        return self._data
+    
+    @data.setter
+    def data(self, value: Any) -> None:
+        """
+        Set the standardized data.
+        
+        Args:
+            value (Any): The standardized data to set
+        """
+        self._data = value
+        # Reset dataframe since data changed
+        self._dataframe = None
+    
+    @property
+    def dataframe(self) -> pd.DataFrame:
+        """
+        Get the pandas DataFrame. Creates it if it doesn't exist.
+        
+        Returns:
+            pd.DataFrame: The pandas DataFrame
+            
+        Raises:
+            ValueError: If no standardized data is available
+        """
+        if self._dataframe is None:
+            self._dataframe = standard_dict_to_df(self.data)
+        return self._dataframe
+    
+    @dataframe.setter
+    def dataframe(self, value: pd.DataFrame) -> None:
+        """
+        Set the DataFrame.
+        
+        Args:
+            value (pd.DataFrame): The DataFrame to set
+        """
+        self._dataframe = value
+    
+    def __str__(self) -> str:
+        """String representation of the result."""
+        data_type = type(self._data).__name__ if self._data is not None else "None"
+        return f"TrendSearchResult(raw_data_type={type(self.raw_data).__name__}, data_type={data_type}, has_dataframe={self._dataframe is not None})"
+    
+    def __repr__(self) -> str:
+        """Detailed string representation of the result."""
+        return f"TrendSearchResult(raw_data={self.raw_data}, data={self.data}, dataframe={self._dataframe})"
 
 class API_Call:
     """
@@ -80,9 +184,7 @@ class API_Call:
         self.granularity = granularity
         self.kwargs = kwargs
         self._search_history = []
-        self._raw_data_history = []
-        self._data_history = []
-        self._dataframe_history = []
+        self._search_result_history = []
         self._date_range = None
 
         # Create a closure that captures self.verbose
@@ -93,28 +195,40 @@ class API_Call:
 
         self.print_func = print_func if print_func is not None else make_print_func(self.verbose)
 
-    def search(
+    def setup_search(
         self,
         search_spec: Optional[SearchSpec] = None,
         **kwargs
     ) -> 'API_Call':
         """
-        Search Google Trends using the API.
+        Set up the search parameters and configuration.
+        This method handles the common setup logic that all APIs need.
         
         Args:
             search_spec (Optional[SearchSpec]): Pre-configured search specification
             **kwargs: Arguments passed to SearchSpec constructor (search_term, start_date, end_date, date_range, granularity, verbose)
             
         Returns:
-            API_Call: Returns self for method chaining. The raw data is stored in self.raw_data
+            API_Call: Returns self for method chaining
         """
         self.print_func(f"Preparing {self.__class__.__name__} search request:")
         if search_spec is not None and isinstance(search_spec, SearchSpec):
+            # Check if the provided search_spec's API matches our API
+            our_api_string = self._api_string()
+            if our_api_string is not None and hasattr(search_spec, 'api') and search_spec.api != our_api_string:
+                self.print_func(f"Warning: SearchSpec API '{search_spec.api}' doesn't match this API class '{our_api_string}'")
             # Use provided search_spec directly
             self.search_spec = search_spec
         else:
-            # Pass all kwargs to SearchSpec constructor
-            self.search_spec = SearchSpec(**kwargs)
+            # Get the API string for this class
+            api_string = self._api_string()
+            
+            # Pass all kwargs to SearchSpec constructor, including the api parameter
+            search_kwargs = kwargs.copy()
+            if api_string is not None:
+                search_kwargs['api'] = api_string
+            
+            self.search_spec = SearchSpec(**search_kwargs)
         self.print_func(f"Search spec: {self.search_spec}")
 
         self.print_func(f"  Search term: {self.search_spec.term_string}")
@@ -136,6 +250,26 @@ class API_Call:
 
         # Prepare the request
         self.prepare_request()
+
+        return self
+
+    def search(
+        self,
+        search_spec: Optional[SearchSpec] = None,
+        **kwargs
+    ) -> 'API_Call':
+        """
+        Search Google Trends using the API.
+        
+        Args:
+            search_spec (Optional[SearchSpec]): Pre-configured search specification
+            **kwargs: Arguments passed to SearchSpec constructor (search_term, start_date, end_date, date_range, granularity, verbose)
+            
+        Returns:
+            API_Call: Returns self for method chaining. The raw data is stored in self.raw_data
+        """
+        # Set up the search parameters
+        self.setup_search(search_spec, **kwargs)
 
         if self.__class__.__name__ == "API_Call":
             print(f"Base class {self.__class__.__name__} prepares a request directly to Google Trends.")
@@ -242,39 +376,57 @@ class API_Call:
 
         self.response = requests.Session().send(self.prepared_request)
         self.response.raise_for_status()
-        self.raw_data = self.response.json()
+        
+        # Get raw data
+        raw_data = self.response.json()
+        
+        # Create TrendSearchResult with raw data and search_spec (standardization will be handled later)
+        self.search_result = TrendSearchResult(
+            raw_data=raw_data,
+            search_spec=self.search_spec,
+            converter=self.raw_data_converter
+        )
+        
         self.print_func("  Search successful!")
-        #self.print_func(f"  Raw data: {self.raw_data}")
+        #self.print_func(f"  Raw data: {raw_data}")
 
+    def raw_data_converter(self, raw_data: Any) -> Any:
+        """
+        Convert the raw data to a standardized format.
+        """
+        return raw_data
 
     def standardize_data(self) -> 'API_Call':
         """
         Standardize the raw data into a common format.
-        Copies raw_data to data and extracts raw_date_list from the standardized format.
+        This method is kept for backward compatibility but now uses the TrendSearchResult system.
         
         Returns:
             API_Call: Returns self for method chaining
         """
-        self.data = self.raw_data
-        
-        # Extract raw_date_list from the standardized data format
-        raw_date_list = []
-        for entry in self.raw_data:
-            raw_date_list.append(cleanup_date_str(entry['date']))
-        self.raw_date_list = raw_date_list
-        
+        # The standardization now happens automatically through the TrendSearchResult system
+        # This method is kept for backward compatibility but doesn't need to do anything
         return self
 
-    def make_dataframe(self) -> 'API_Call':
+    def _api_string(self) -> Optional[str]:
         """
-        Convert the standardized data to a pandas DataFrame.
-        Uses standard_dict_to_df to create a DataFrame with a PeriodIndex.
+        Get the API string identifier for this class from available_apis configuration.
         
         Returns:
-            API_Call: Returns self for method chaining
+            Optional[str]: The API string (e.g., 'serpapi', 'trendspy') or None if not found
         """
-        self.dataframe = standard_dict_to_df(self.data)
-        return self
+        # Load available_apis configuration
+        available_apis = load_api_config()
+        
+        # Get the class name
+        class_name = self.__class__.__name__
+        
+        # Search for the class name in the configuration
+        for api_string, api_info in available_apis.items():
+            if api_info.get('class') == class_name:
+                return api_string
+        
+        return None
 
     @property
     def raw_data(self) -> Any:
@@ -285,21 +437,12 @@ class API_Call:
             Any: The raw API response data
             
         Raises:
-            ValueError: If no raw data is available
+            ValueError: If no search has been performed yet
         """
-        if not self._raw_data_history:
-            raise ValueError("No raw data available. Call search() first.")
-        return self._raw_data_history[-1]
-
-    @raw_data.setter
-    def raw_data(self, value: Any) -> None:
-        """
-        Set the raw data and append it to the history.
-        
-        Args:
-            value (Any): The raw data to set
-        """
-        self._raw_data_history.append(value)
+        try:
+            return self.search_result.raw_data
+        except ValueError as e:
+            raise ValueError("No search has been performed yet. Call search() first.") from e
 
     @property
     def data(self) -> Any:
@@ -310,21 +453,12 @@ class API_Call:
             Any: The standardized data
             
         Raises:
-            ValueError: If no standardized data is available
+            ValueError: If no search has been performed yet
         """
-        if not self._data_history:
-            raise ValueError("No standardized data available. Call standardize_data() first.")
-        return self._data_history[-1]
-
-    @data.setter
-    def data(self, value: Any) -> None:
-        """
-        Set the standardized data and append it to the history.
-        
-        Args:
-            value (Any): The standardized data to set
-        """
-        self._data_history.append(value)
+        try:
+            return self.search_result.data
+        except ValueError as e:
+            raise ValueError("No search has been performed yet. Call search() first.") from e
 
     @property
     def dataframe(self) -> pd.DataFrame:
@@ -335,51 +469,24 @@ class API_Call:
             pd.DataFrame: The pandas DataFrame
             
         Raises:
-            ValueError: If no DataFrame is available
+            ValueError: If no search has been performed yet
         """
-        if not self._dataframe_history:
-            raise ValueError("No DataFrame available. Call make_dataframe() first.")
-        return self._dataframe_history[-1]
+        try:
+            return self.search_result.dataframe
+        except ValueError as e:
+            raise ValueError("No search has been performed yet. Call search() first.") from e
 
-    @dataframe.setter
-    def dataframe(self, value: pd.DataFrame) -> None:
-        """
-        Set the DataFrame and append it to the history.
-        
-        Args:
-            value (pd.DataFrame): The DataFrame to set
-        """
-        self._dataframe_history.append(value)
+
 
     @property
-    def raw_data_history(self) -> List[Any]:
+    def search_result_history(self) -> List[TrendSearchResult]:
         """
-        Get the history of raw data.
+        Get the history of search results.
         
         Returns:
-            List[Any]: List of all raw data entries
+            List[TrendSearchResult]: List of all search result entries
         """
-        return self._raw_data_history
-
-    @property
-    def data_history(self) -> List[Any]:
-        """
-        Get the history of standardized data.
-        
-        Returns:
-            List[Any]: List of all standardized data entries
-        """
-        return self._data_history
-
-    @property
-    def dataframe_history(self) -> List[pd.DataFrame]:
-        """
-        Get the history of dataframes.
-        
-        Returns:
-            List[pd.DataFrame]: List of all dataframe entries
-        """
-        return self._dataframe_history
+        return self._search_result_history
 
     @property
     def search_history(self) -> List[Any]:
@@ -400,6 +507,31 @@ class API_Call:
     #         value (Any): Search term to add to history
     #     """
     #     self._search_history.append(value)
+
+    @property
+    def search_result(self) -> TrendSearchResult:
+        """
+        Get the current search result.
+        
+        Returns:
+            TrendSearchResult: The current search result
+            
+        Raises:
+            ValueError: If no search result is available
+        """
+        if not self._search_result_history:
+            raise ValueError("No search result available. Call search() first.")
+        return self._search_result_history[-1]
+
+    @search_result.setter
+    def search_result(self, result: TrendSearchResult) -> None:
+        """
+        Set the current search result and append it to the history.
+        
+        Args:
+            result (TrendSearchResult): Search result to set
+        """
+        self._search_result_history.append(result)
 
     @property
     def search_spec(self) -> SearchSpec:

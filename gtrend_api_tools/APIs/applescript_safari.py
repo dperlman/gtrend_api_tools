@@ -7,7 +7,7 @@ from typing import Optional, Callable, List, Dict, Any, Union, Literal
 import rjsmin
 import html
 from bs4 import BeautifulSoup
-from gtrend_api_tools.APIs.base_classes import API_Call
+from gtrend_api_tools.APIs.base_classes import API_Call, TrendSearchResult
 import pandas as pd
 from gtrend_api_tools.utils import _print_if_verbose
 from gtrend_api_tools.search_specs import DateRange, GtrendDateRange
@@ -215,8 +215,8 @@ class ApplescriptSafari(API_Call):
         Returns:
             ApplescriptSafari: Returns self for method chaining
         """
-        # Call base class search method first to handle terms and dates
-        super().search(**kwargs)
+        # Set up search parameters using base class logic
+        self.setup_search(**kwargs)
         # Get the processed search spec for dates
         spec = self.search_spec
         
@@ -271,8 +271,15 @@ class ApplescriptSafari(API_Call):
         if not date_range_str:
             raise Exception("Failed to parse date range from trends page")
 
-        # Store the raw data
-        self.raw_data = {'date_range': date_range_str, 'html_content': html_content}
+        # Create raw data dictionary
+        raw_data = {'date_range': date_range_str, 'html_content': html_content}
+        
+        # Create TrendSearchResult with raw data and converter
+        self.search_result = TrendSearchResult(
+            raw_data=raw_data,
+            search_spec=self.search_spec,
+            converter=self.raw_data_converter
+        )
         
         self.print_func("Search successful!")
         
@@ -283,27 +290,36 @@ class ApplescriptSafari(API_Call):
 
         return self
 
-
-    def standardize_data(self) -> 'ApplescriptSafari':
+    def raw_data_converter(self, raw_data: Any) -> Any:
         """
-        Standardize the raw HTML data into a common format.
+        Convert ApplescriptSafari raw data to standardized format.
         Parses the HTML table into a list of dictionaries with date and values.
         
+        Args:
+            raw_data (Any): Raw data from ApplescriptSafari (contains HTML and date range)
+            
         Returns:
-            ApplescriptSafari: Returns self for method chaining
+            Any: Standardized data in the common format
+            
+        Raises:
+            ValueError: If raw data doesn't contain expected structure
         """
-        if not self._raw_data_history:
-            raise ValueError("No raw data available. Call search() first.")
+        if not raw_data:
+            raise ValueError("No raw data provided")
+        
+        if 'date_range' not in raw_data or 'html_content' not in raw_data:
+            raise ValueError("Raw data must contain 'date_range' and 'html_content'")
         
         # Get the date range from the raw data
-        date_range_str = self.raw_data['date_range']
+        date_range_str = raw_data['date_range']
         self.print_func(f"Raw date range: {date_range_str}")
+        
         # Parse it into a date range object
         date_range = DateRange(range_str=date_range_str, freq=self.search_spec.freq, resolution=self.search_spec.search_resolution)
         self.print_func(f"Parsed date range with DateRange: {repr(date_range)}")
 
         # Parse the HTML using BeautifulSoup
-        soup = BeautifulSoup(self.raw_data['html_content'], 'html.parser')
+        soup = BeautifulSoup(raw_data['html_content'], 'html.parser')
         
         # Find the table
         table = soup.find('table')
@@ -359,7 +375,6 @@ class ApplescriptSafari(API_Call):
                     
             if values:  # Only add entries that have valid values
                 standardized_entry = {
-                    #'date': standardize_date_range_start(date_str),
                     'date': date_range.datetime_str_list_ymd[i],
                     'values': values
                 }
@@ -368,9 +383,19 @@ class ApplescriptSafari(API_Call):
         if not data:
             raise ValueError("No valid data found in table")
             
-        self.data = data
         self.print_func(f"Standardized data length: {len(data)}")
-        self.raw_date_list = raw_date_list
+        return data
+
+    def standardize_data(self) -> 'ApplescriptSafari':
+        """
+        Standardize the raw HTML data into a common format.
+        This method is kept for backward compatibility but now uses the TrendSearchResult system.
+        
+        Returns:
+            ApplescriptSafari: Returns self for method chaining
+        """
+        # The standardization now happens automatically through the TrendSearchResult system
+        # This method is kept for backward compatibility but doesn't need to do anything
         return self
 
 

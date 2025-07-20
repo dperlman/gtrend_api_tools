@@ -1,9 +1,9 @@
 api_keys:
-  serpapi: "76f3ea1f6758054f7bb79457102d937bc1dff7ae4a1ecc98e6a5751530a11824"
-  serpwow: "063CF8C35D1E42FF96E7262A2AD04C00"
-  searchapi: "Ci1r51NbstLbdH8F2KVEh6jT"
-  brightdata: "62b71d03b41ada34ac05851309d12411e2ddbc1ff2af32ae9a81f186204f015c"
-  #brightdata: "ac18382f-402c-4688-8243-594b62556847"
+  serpapi: "my_serpapi_key"
+  serpwow: "my_serpwow_key"
+  searchapi: "my_searchapi_key"
+  brightdata: "my_brightdata_key"
+  scrapingdog: "my_scrapingdog_key"
 
 tor:
   control_password: "controlpass" 

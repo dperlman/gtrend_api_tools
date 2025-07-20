@@ -62,26 +62,32 @@ class Brightdata(API_Call):
         return data
 
 
-    def standardize_data(self) -> 'Brightdata':
+    def raw_data_converter(self, raw_data: Any) -> Any:
         """
-        Standardize the raw data into a common format.
+        Convert Brightdata raw data to standardized format.
         Transforms the interest_over_time data into a list of dictionaries with date and values.
         
+        Args:
+            raw_data (Any): Raw data from Brightdata response
+            
         Returns:
-            Brightdata: Returns self for method chaining
+            Any: Standardized data in the common format
+            
+        Raises:
+            ValueError: If raw data doesn't contain expected structure
         """
-        if not hasattr(self, 'raw_data') or not self.raw_data:
-            raise ValueError("No raw data available. Call search() first.")
+        if not raw_data:
+            raise ValueError("No raw data provided")
             
         def check_for_interest_over_time(widget):
             if 'data' in widget and 'default' in widget['data'] and 'timelineData' in widget['data']['default']:
                 return True
             return False
 
-        raw_keywords = self.raw_data.get('keywords', [])
+        raw_keywords = raw_data.get('keywords', [])
         keywords = [keyword['keyword'] for keyword in raw_keywords]
 
-        widgets = self.raw_data.get('widgets', [])
+        widgets = raw_data.get('widgets', [])
         timeline = []
         for widget in widgets:
             if check_for_interest_over_time(widget):
@@ -89,8 +95,8 @@ class Brightdata(API_Call):
                 break
 
         # Transform the data into the standardized format
-        raw_date_list = []
         data = []
+        raw_date_list = []
         for entry in timeline:
             raw_date_list.append(cleanup_date_str(entry['formattedTime']))
             standardized_entry = {
@@ -104,9 +110,20 @@ class Brightdata(API_Call):
                 ]
             }
             data.append(standardized_entry)
+        
         self.print_func(f"Standardized data length: {len(data)}")
-        self.raw_date_list = raw_date_list
-        self.data = data
+        return data
+
+    def standardize_data(self) -> 'Brightdata':
+        """
+        Standardize the raw data into a common format.
+        This method is kept for backward compatibility but now uses the TrendSearchResult system.
+        
+        Returns:
+            Brightdata: Returns self for method chaining
+        """
+        # The standardization now happens automatically through the TrendSearchResult system
+        # This method is kept for backward compatibility but doesn't need to do anything
         return self
 
 """

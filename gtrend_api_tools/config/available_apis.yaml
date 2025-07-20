@@ -13,6 +13,11 @@ brightdata:
   type: paid
   description: Uses Brightdata service
 
+scrapingdog:
+  class: Scrapingdog
+  type: paid
+  description: Uses Scrapingdog service
+
 serpwow:
   class: Serpwow
   type: paid

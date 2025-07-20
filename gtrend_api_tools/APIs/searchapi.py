@@ -50,22 +50,28 @@ class SearchApi(API_Call):
         return params
 
 
-    def standardize_data(self) -> 'SearchApi':
+    def raw_data_converter(self, raw_data: Any) -> Any:
         """
-        Standardize the raw data into a common format.
+        Convert SearchApi raw data to standardized format.
         Transforms the interest_over_time data into a list of dictionaries with date and values.
         
-        Returns:
-            SearchApi: Returns self for method chaining
-        """
-        if not hasattr(self, 'raw_data') or not self.raw_data:
-            raise ValueError("No raw data available. Call search() first.")
+        Args:
+            raw_data (Any): Raw data from SearchApi response
             
-        if 'interest_over_time' not in self.raw_data:
+        Returns:
+            Any: Standardized data in the common format
+            
+        Raises:
+            ValueError: If raw data doesn't contain expected structure
+        """
+        if not raw_data:
+            raise ValueError("No raw data provided")
+            
+        if 'interest_over_time' not in raw_data:
             raise ValueError("Raw data does not contain interest_over_time data")
             
         # Extract the timeline data
-        timeline = self.raw_data['interest_over_time']['timeline_data']
+        timeline = raw_data['interest_over_time']['timeline_data']
         
         # Transform the data into the standardized format
         raw_date_list = []
@@ -83,7 +89,18 @@ class SearchApi(API_Call):
                 ]
             }
             data.append(standardized_entry)
+        
         self.print_func(f"Standardized data length: {len(data)}")
-        self.raw_date_list = raw_date_list
-        self.data = data
+        return data
+
+    def standardize_data(self) -> 'SearchApi':
+        """
+        Standardize the raw data into a common format.
+        This method is kept for backward compatibility but now uses the TrendSearchResult system.
+        
+        Returns:
+            SearchApi: Returns self for method chaining
+        """
+        # The standardization now happens automatically through the TrendSearchResult system
+        # This method is kept for backward compatibility but doesn't need to do anything
         return self

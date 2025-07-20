@@ -1,7 +1,7 @@
 import os
 import sys
 
-from gtrend_api_tools.APIs import SerpApi, Serpwow, TrendsPy, SearchApi, SerpApiPython, ApplescriptSafari, DummyApi, Brightdata
+from gtrend_api_tools.APIs import SerpApi, Serpwow, TrendsPy, SearchApi, ApplescriptSafari, DummyApi, Brightdata
 from datetime import datetime
 from gtrend_api_tools.utils import load_config, _print_if_verbose
 import json
@@ -44,9 +44,9 @@ def test_api(api_instance, api_name, start_date, end_date, search_term, verbose:
     print(f"Raw results saved to {raw_output_file}")
     
 
-    standardized_data = api_instance.standardize_data().data
+    standardized_data = api_instance.data
     #print(f"Standardized data: {standardized_data}")
-    dataframe = api_instance.make_dataframe().dataframe
+    dataframe = api_instance.dataframe
     #print(f"Dataframe: {dataframe}")
 
 
@@ -97,29 +97,41 @@ def main():
     brightdata_instance = Brightdata(api_key=config.get('api_keys', {}).get('brightdata'), verbose=verbose)
 
     apis = [
-        #"SerpApi": SerpApi(api_key=config.get('api_keys', {}).get('serpapi'), verbose=verbose),
-        #"SerpWow": SerpWow(api_key=config.get('api_keys', {}).get('serpwow'), verbose=verbose),
-        #"SearchApi": SearchApi(api_key=config.get('api_keys', {}).get('searchapi'), verbose=verbose),
-        #{"name": "ApplescriptSafari", "api": applescript_safari_instance, "search_term": "coffee,tea"},
-        {"name": "Brightdata", "api": brightdata_instance, "search_term": "coffee,tea"},
-        #{"name": "ApplescriptSafari", "api": applescript_safari_instance, "search_term": "car,truck"},
-        #"TrendsPy": TrendsPy(verbose=verbose, tor_control_password=tor_control_password, proxy="127.0.0.1:9150", change_identity=True),
-        #"DummyApi": DummyApi(verbose=verbose)
+        #{"name": "SerpApi", "instance": None, "search_term": "coffee,tea"},
+        #{"name": "Serpwow", "instance": None, "search_term": "coffee,tea"},
+        #{"name": "SearchApi", "instance": None, "search_term": "coffee,tea"},
+        #{"name": "ApplescriptSafari", "instance": None, "search_term": "coffee,tea"},
+        #{"name": "Brightdata", "instance": None, "search_term": "coffee,tea"},
+        #{"name": "Scrapingdog", "instance": None, "search_term": "coffee,tea"},
+        {"name": "ApplescriptSafari", "instance": None, "search_term": "car,truck"},
+        #{"name": "TrendsPy", "instance": None, "search_term": "coffee,tea"},
+        #{"name": "DummyApi", "instance": None, "search_term": "coffee,tea"}
     ]
+
+    # Create API instances
+    for api in apis:
+        if api["instance"] is None:
+            api_class = globals()[api["name"]]
+            api_key = config.get('api_keys', {}).get(api["name"].lower())
+            if api["name"].lower() == "trendspy":
+                # Add tor_control_password for Trendspy
+                api["instance"] = api_class(api_key=api_key, verbose=verbose, tor_control_password=tor_control_password)
+            else:
+                api["instance"] = api_class(api_key=api_key, verbose=verbose)
 
     # Test each API
     for api in apis:
         print(f"Testing {api['name']} with search term: {api['search_term']}")
-        test_api(api["api"], api["name"], start_date, end_date, api["search_term"], verbose)
+        test_api(api["instance"], api["name"], start_date, end_date, api["search_term"], verbose)
 
     # Close all Safari tabs if we've tested ApplescriptSafari
-    try:
-        if applescript_safari_instance.search_history:
-            print("Closing all Safari tabs")
-            applescript_safari_instance._close_all_safari_tabs() # this is a method of the ApplescriptSafari class
-            print("All Safari tabs closed")
-    except:
-        pass
+    for api in apis:
+        if api["name"].lower() == "applescriptsafari" and api["instance"] is not None:
+            if api["instance"].search_history:
+                print("Closing all Safari tabs")
+                api["instance"]._close_all_safari_tabs()  # this is a method of the ApplescriptSafari class
+                print("All Safari tabs closed")
+    # Moved the closing logic inside the first loop as requested, and removed error handling.
 
 if __name__ == "__main__":
     main() 
