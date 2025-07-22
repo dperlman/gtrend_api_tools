@@ -45,6 +45,8 @@ from gtrend_api_tools.date_strings import parse_date_str, split_date_range_str, 
 from gtrend_api_tools.granularity import GranularityManager
 import pandas as pd
 from types import SimpleNamespace
+from gtrend_api_tools.date_strings import CURRENT_DEFAULT_DT
+
 
 
 ########################################################
@@ -77,7 +79,8 @@ class DateRange:
         start: Optional[Union[str, datetime]] = None,
         end: Optional[Union[str, datetime]] = None,
         range_str: Optional[str] = None,
-        freq: str = 'D',
+        periods: Optional[int] = None,
+        freq: Optional[str] = None,
         resolution: Optional[str] = 'h',
         range_space: str = ' ',
         verbose: bool = False
@@ -85,33 +88,25 @@ class DateRange:
         self.original_start: Optional[str] = start
         self.original_end: Optional[str] = end
         self.original_range_str: Optional[str] = range_str
-        self.freq: str = freq  # Defaults to daily frequency.
+        self.periods: Optional[int] = periods
+        self.freq: Optional[str] = freq
         self.resolution: str = resolution
         self.range_space: str = range_space
         self.verbose: bool = verbose
         self.original_start_str: Optional[str] = None
         self.original_end_str: Optional[str] = None
-        self.original_start_dt: datetime
-        self.original_end_dt: datetime
-        # self.start_str: str
-        # self.last_index_str: str
-        # self.end_str: str
+        self.original_start_dt: Optional[datetime] = None
+        self.original_end_dt: Optional[datetime] = None
         self.start_dt: datetime
         self.last_index_dt: datetime
         self.end_dt: datetime
-        # self.formatted_start_ymd: str
-        # self.formatted_start_mdy: str
-        # self.formatted_end_ymd: str
-        # self.formatted_end_mdy: str
-        # self.formatted_range_ymd: str
-        # self.formatted_range_mdy: str
         self.period_index: pd.PeriodIndex
         self.num_periods: int
         self.duration: timedelta
         self.str: SimpleNamespace = SimpleNamespace()
 
         # First we need to sort out range_str, start, and end.
-        self._init_range_str_start_end(range_str, start, end)
+        self._init_range_str_start_end(range_str, start, end, periods, freq)
 
         # Now we have good self.original_start_dt and self.original_end_dt.
         # Now set up the internal detailed parameters we need
@@ -122,7 +117,14 @@ class DateRange:
 
     # Private methods
 
-    def _init_range_str_start_end(self, range_str: Optional[str], start: Optional[Union[str, datetime]], end: Optional[Union[str, datetime]]) -> None:
+    def _init_range_str_start_end(
+        self,
+        range_str: Optional[str],
+        start: Optional[Union[str, datetime]],
+        end: Optional[Union[str, datetime]],
+        periods: Optional[int],
+        freq: Optional[str]
+    ) -> None:
         """
         Sort out range_str, start, and end.
         If range_str is provided, it takes precedence over start and end.
@@ -144,7 +146,14 @@ class DateRange:
                 parse_errors += f"from range_str: {range_str}"
                 raise ValueError(f"Cannot initialize DateRange with given inputs: {parse_errors}")
 
-        # Now we definitely have start_date and end_date.
+        # Now we either have start_date and end_date from range_str,
+        # or if range_str was not provided, we have whatever was given for start, end, periods, and freq.
+        # We need 3 of the 4 of start, end, periods, and freq to be set before we can initialize the date range info.
+        # Check for this condition and raise an error if it's not met.
+        # provided = [start is not None, end is not None, periods is not None, freq is not None]
+        # if sum(provided) < 3:
+        #     raise ValueError("DateRange requires at least 3 of the 4 parameters: start, end, periods, freq to be set (start and end may be provided in range_str).")
+
         # We may need to parse them into datetime objects.
         # Note that if we are using someone else's datatime objects,
         # they may have timezone information that will lead to unexpected results
@@ -158,7 +167,7 @@ class DateRange:
                 parse_errors += f"invalid start: {start} "
         elif isinstance(start, (datetime, pd.Timestamp)):
             self.original_start_dt = start
-        else:
+        elif start is not None:
             parse_errors += f"invalid start: {start} "
 
         if isinstance(end, str):
@@ -168,7 +177,7 @@ class DateRange:
                 parse_errors += f"invalid end: {end} "
         elif isinstance(end, (datetime, pd.Timestamp)):
             self.original_end_dt = end
-        else:
+        elif end is not None:
             parse_errors += f"invalid end: {end}"
 
         if parse_errors:
@@ -178,8 +187,10 @@ class DateRange:
         # Original_start_str and original_end_str are set only if `start` and `end` were strings.
         # One last sanity check: we don't want to allow start_dt to be greater than end_dt
         # And while we're at it, let's just arbitrarily set the minimum to one second
-        if self.original_end_dt - self.original_start_dt < timedelta(seconds=1):
-            raise ValueError("DateRange end_dt must be greater than start_dt by at least one second")
+        # But Only validate start/end relationship if both are provided
+        if self.original_start_dt is not None and self.original_end_dt is not None:
+            if self.original_end_dt - self.original_start_dt < timedelta(seconds=1):
+                raise ValueError("DateRange end_dt must be greater than start_dt by at least one second")
 
     def _parse_range_str(self, range_str: str) -> None:
         """
@@ -210,11 +221,11 @@ class DateRange:
         # print(self.freq)
         # print(self.original_start_dt)
         # print(self.original_end_dt)
-        self.period_index = pd.period_range(start=self.original_start_dt, end=self.original_end_dt, freq=self.freq)
-        self.datetime_index = self.period_index.to_timestamp().tz_localize(timezone.utc)
+        self.period_index = pd.period_range(start=self.original_start_dt, end=self.original_end_dt, freq=self.freq, periods=self.periods)
+        self.datetime_index = self.period_index.to_timestamp().tz_localize(CURRENT_DEFAULT_DT.tzinfo)
         # print(self.datetime_index.freqstr)
         self.extended_period_index = self.period_index.union([self.period_index[-1] + 1])
-        self.extended_datetime_index = self.extended_period_index.to_timestamp().tz_localize(timezone.utc)
+        self.extended_datetime_index = self.extended_period_index.to_timestamp().tz_localize(CURRENT_DEFAULT_DT.tzinfo)
 
         self.start_dt = self.datetime_index[0].to_pydatetime()
         # print(self.start_dt)
@@ -513,3 +524,18 @@ class SearchSpec(GtrendDateRange):
     def __repr__(self):
         return (f"{self.__class__.__name__}(search_term={self.term_string}, start_date={self.str.start_ymd}, end_date={self.str.end_ymd}, "
                 f"granularity={self.granularity})")
+
+
+########################################################
+# CompoundSearchSpec class. 
+########################################################
+
+class CompoundSearchSpec(SearchSpec):
+    """
+    A class that extends SearchSpec to handle compound search operations.
+    This class is a placeholder for future compound search functionality.
+    """
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # TODO: Implement compound search functionality
+        pass
