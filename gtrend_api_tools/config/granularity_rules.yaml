@@ -5,6 +5,8 @@ granularity_rules:
     max_hours: 5
     max_days: null
     max_inclusive: False  # means < 5 hours
+    limit_units: "min"
+    limit_value: 4
     search_resolution: "h"
     result_resolution: "m"
     fixed: True
@@ -16,6 +18,8 @@ granularity_rules:
     max_hours: 36
     max_days: null
     max_inclusive: False  # means < 36 hours
+    limit_units: "8min"
+    limit_value: 35
     search_resolution: "h"
     result_resolution: "m"
     fixed: True
@@ -27,6 +31,8 @@ granularity_rules:
     max_hours: 72
     max_days: 3
     max_inclusive: False  # means < 72 hours
+    limit_units: "16min"
+    limit_value: 71
     search_resolution: "h"
     result_resolution: "m"
     fixed: True
@@ -41,7 +47,7 @@ granularity_rules:
     search_resolution: "h"
     result_resolution: "h"
     fixed: True
-    max_records: 191
+    max_records: 192
     record_seconds: 3600
   D:
     name: "daily"
@@ -63,7 +69,7 @@ granularity_rules:
     search_resolution: "D"
     result_resolution: "D"
     fixed: False # a weekly frequency is not merely a 7 day duration, it's based on the calendar week
-    max_records: 1900
+    max_records: 270 # 269 weeks + 1 for including first and last weeks
     record_seconds: 604800
   M:
     name: "monthly"
@@ -113,3 +119,15 @@ granularity_rules:
 # <270 days: 1 day
 # <1900 days: 1 week
 # <inf days: 1 month (as calendar months!!!)
+
+
+# I am going to have to change this! The limits are not just by days.
+# Each limit has to have limit_units and limit_value.
+# The limit_units will be hours for the shorter ones, then days, then whole weeks, then whole months.
+# This will eliminate the need for the max_inclusive flag.
+# The application of these rules will require the use of pandas PeriodIndex
+# because the rules are not just about the number of days, but also about the calendar month and week.
+# this would be done in 
+
+# Then another thing to do would be to use dummy data that is actual trends data.
+# This would actually be easier, but not really until after I have the stagger part working so I can get the data.

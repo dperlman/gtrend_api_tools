@@ -8,39 +8,12 @@ from datetime import datetime, timedelta, timezone
 # Import and re-export fixtures from submodules
 from .fixtures.api_fixtures import API_TO_TEST, VERBOSE, api_key, api_instance
 from .fixtures.config_fixtures import test_config, available_apis
-from .fixtures.granularity_fixtures import granularity_api_1, granularity_api_2, api_instances_for_comparison
+from .fixtures.granularity_fixtures import granularity_api_1, granularity_api_2, api_instances_for_comparison, granularity_manager
+from .fixtures.search_fixtures import test_terms, test_dates, multiple_terms, granularity_test_dates, granularity_test_case, granularity_transition_case
 
 # Test configuration
 API_TO_TEST = 'dummy_api'  # Specify which API to test
 VERBOSE = False  # Set to True to see detailed API output during tests
-
-@pytest.fixture(scope="module")
-def test_terms():
-    """Provide common test search terms."""
-    return {
-        'term1': "hamburger",
-        'term2': "pizza",
-        'term3': "hot dog",
-        'term4': "ice cream",
-        'term5': "coffee",
-        'term6': "tea",
-        'term7': "wine",
-        'term8': "beer",
-        'term9': "soda",
-        'term10': "water"
-    }
-
-@pytest.fixture(scope="module")
-def test_config():
-    """Load test configuration."""
-    from gtrend_api_tools.utils import load_config
-    return load_config()
-
-@pytest.fixture(scope="module")
-def available_apis():
-    """Load available APIs configuration."""
-    from gtrend_api_tools.APIs.api_utils import load_api_config
-    return load_api_config()
 
 @pytest.fixture(scope="module")
 def api_key(test_config, request, available_apis):
@@ -53,24 +26,6 @@ def api_key(test_config, request, available_apis):
     if available_apis.get(api_name, {}).get('type') != 'paid':
         return None
     return test_config.get('api_keys', {}).get(api_name)
-
-@pytest.fixture(scope="module")
-def test_dates():
-    """Provide common test date ranges."""
-    return {
-        'short_range': {
-            'start': "2024-01-01",
-            'end': "2024-01-07"
-        },
-        'medium_range': {
-            'start': "2024-01-01",
-            'end': "2024-01-10"
-        },
-        'datetime_range': {
-            'start': datetime(2024, 1, 1, tzinfo=timezone.utc),
-            'end': datetime(2024, 6, 12, tzinfo=timezone.utc)
-        }
-    }
 
 @pytest.fixture(scope="module")
 def api_instance(api_key, available_apis, request):
@@ -105,6 +60,11 @@ __all__ = [
     'api_instance',
     'test_terms',
     'test_dates',
+    'multiple_terms',
+    'granularity_test_dates',
+    'granularity_test_case',
+    'granularity_transition_case',
+    'granularity_manager',
     'test_config',
     'available_apis',
     'granularity_api_1',

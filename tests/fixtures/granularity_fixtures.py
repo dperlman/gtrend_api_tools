@@ -1,5 +1,6 @@
 import pytest
 from datetime import datetime
+from gtrend_api_tools.granularity import GranularityManager
 
 # Constants for granularity comparison
 GRANULARITY_COMPARE_1 = 'dummy_api'
@@ -7,6 +8,11 @@ GRANULARITY_COMPARE_2 = 'dummy_api'
 
 # Test configuration
 LOG_LEVEL = 'INFO'  # Logging level for tests
+
+@pytest.fixture(scope="module")
+def granularity_manager(test_config):
+    """Fixture providing a GranularityManager instance."""
+    return GranularityManager(test_config, verbose=False)
 
 @pytest.fixture(scope="module")
 def granularity_api_1(available_apis):

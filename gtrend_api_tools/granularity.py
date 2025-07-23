@@ -189,7 +189,10 @@ class GranularityManager:
 
         Note: Although Google Trends allows (secretly, behind the scenes) for dates to be specified with hours for very short time ranges,
         we don't use this because it's not documented and it's not clear if it's reliable. We had to draw the line somewhere.
-        
+        New Note: that is not true. we are doing the full calculation.
+        We are going to have to update this to do the longer time ranges correctly
+        based on limit_units and limit_value.
+
         Args:
             start_date_dt (datetime): Start date of the search
             end_date_dt (datetime): End date of the search
@@ -212,41 +215,56 @@ class GranularityManager:
         else:
             end_dt = end_date
         
-        # Truncate any HH:MM:SS
-        # start_dt = start_dt.replace(hour=0, minute=0, second=0, microsecond=0)
-        # end_dt = end_dt.replace(hour=0, minute=0, second=0, microsecond=0)
-        # _print_if_verbose(f"Truncated dates to midnight: {start_dt} to {end_dt}", self.verbose)
-        
         # Calculate the time range
         time_diff = end_dt - start_dt
-        _print_if_verbose(f"Time difference: {time_diff}", self.verbose)
+        week_diff = time_diff.days // 7
+        day_diff = time_diff.days
+        hour_diff = time_diff.seconds // 3600
+
+        _print_if_verbose(f"Week difference: {week_diff}, day difference: {day_diff}, hour difference: {hour_diff}", self.verbose)
         
-        return self.get_granularity_by_time_diff(time_diff)
+        return self.get_granularity_by_limit_units(start_dt, end_dt)
     
-        # # Determine granularity based on rules in order
-        # for code, rule in self.rules.items():
-        #     # Check if we are on the last one, with no limit on max_hours
-        #     if rule['max_hours'] == float('inf'):
-        #         _print_if_verbose(f"Selected granularity {code} (no limit on max_hours)", self.verbose)
-        #         break
-        #     # Create timedelta object based on max_hours
-        #     max_timedelta = timedelta(hours=rule['max_hours'])
-        #     max_days_info = f", max_days: {rule.get('max_days')}" if 'max_days' in rule else ""
-        #     _print_if_verbose(f"Rule {code} has max_hours: {rule['max_hours']}{max_days_info} -> timedelta: {max_timedelta}", self.verbose)
+
+    def get_granularity_by_limit_units(
+        self,
+        start_dt: datetime,
+        end_dt: datetime,
+    ) -> str:
+        """
+        Get the granularity code for a given time difference using the limit_units and limit_value.
+        """
+        from gtrend_api_tools.date_strings import get_resolution_details
+        # Determine granularity based on rules in order
+        for code, rule in self.rules.items():
+            search_resolution = rule.get('search_resolution')
+            limit_units = rule.get('limit_units')
+            limit_value = rule.get('limit_value')
+            freq = rule.get('freq')
+            max_records = rule.get('max_records')
             
-        #     # Apply the max_inclusive logic
-        #     if rule['max_inclusive']:
-        #         if time_diff <= max_timedelta:
-        #             _print_if_verbose(f"Selected granularity {code} (inclusive rule, time_diff={time_diff} <= max_timedelta={max_timedelta})", self.verbose)
-        #             break
-        #     else:
-        #         if time_diff < max_timedelta:
-        #             _print_if_verbose(f"Selected granularity {code} (exclusive rule, time_diff={time_diff} < max_timedelta={max_timedelta})", self.verbose)
-        #             break
+            # Truncate start_dt and end_dt by the search_resolution
+            res_args, _, _ = get_resolution_details(search_resolution)
+            truncated_start = start_dt.replace(**res_args)
+            truncated_end = end_dt.replace(**res_args)
+            
+            # Create a pandas PeriodIndex with freq=limit_units and the truncated dates
+            #_print_if_verbose(f"Start: {truncated_start}, end: {truncated_end}, limit_units: {limit_units}, freq: {freq}", self.verbose)
+            period_index = pd.period_range(start=truncated_start, end=truncated_end, freq=freq)
+            num_periods = len(period_index)
+            
+            _print_if_verbose(f"Rule {code}: {num_periods} periods vs limit {limit_value}", self.verbose)
+            
+            # Stop when our number of periods is within the limit_value
+            if num_periods <= max_records:
+                _print_if_verbose(f"Selected granularity {code} ({num_periods} periods <= {max_records})", self.verbose)
+                break
         
-        # rule['granularity'] = code
-        # return rule
-    
+        # If we get here, return the one we left the loop on
+        # If we got all the way to the end of the loop, we will return the last rule
+        rule['granularity'] = code
+        return rule
+
 
     def get_granularity_by_time_diff(
         self,
@@ -254,6 +272,8 @@ class GranularityManager:
     ) -> str:
         """
         Get the granularity code for a given time difference.
+        NOTE: This is deprecated and will be removed in the future.
+        Use get_granularity_by_limit_units instead.
         """ 
         # Determine granularity based on rules in order
         for code, rule in self.rules.items():
