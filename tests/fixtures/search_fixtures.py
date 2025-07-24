@@ -51,6 +51,11 @@ def test_dates():
     } 
 
 @pytest.fixture(scope="module")
+def num_granularity_test_dates():
+    """Provide the number of granularity test dates."""
+    return len(granularity_test_dict)
+
+@pytest.fixture(scope="module")
 def granularity_test_dates():
     """Provide comprehensive test date ranges for granularity tests.
     These test cases are verified directly on Google Trends.
@@ -105,6 +110,12 @@ granularity_test_dict = {
     },
     
     # Hourly granularity tests
+    'serpapi_hourly_max': {
+        'start': "2020-01-01 00:00:00",
+        'end': "2020-01-07 23:00:00",  # 7 days 23 hours (191 hours) - max for hourly
+        'granularity': 'h',
+        'expected_rows': 168 # 167 hours + 1 for including first and last hours
+    },
     'hourly_max': {
         'start': "2020-01-01 00:00:00",
         'end': "2020-01-08 23:00:00",  # 7 days 23 hours (191 hours) - max for hourly
@@ -160,21 +171,16 @@ def granularity_test_case(request):
     """Fixture that returns individual test cases for parameterization.
     These test cases are verified directly on Google Trends.
     """
-    test_cases = [
-        ('one_minute_max', "2020-01-01 00:00:00", "2020-01-01 04:00:00", 'm', 241),
-        ('eight_minute_min', "2020-01-01 00:00:00", "2020-01-01 05:00:00", 'e', 38),
-        ('eight_minute_max', "2020-01-01 00:00:00", "2020-01-02 11:00:00", 'e', 263),
-        ('sixteen_minute_min', "2020-01-01 00:00:00", "2020-01-02 12:00:00", 'n', 136),
-        ('sixteen_minute_max', "2020-01-01 00:00:00", "2020-01-03 23:00:00", 'n', 267),
-        ('hourly_min', "2020-01-01 00:00:00", "2020-01-04 00:00:00", 'h', 73),
-        ('hourly_max', "2020-01-01 00:00:00", "2020-01-08 23:00:00", 'h', 192),
-        ('daily_min', "2020-01-01 00:00:00", "2020-01-09 00:00:00", 'D', 9),
-        ('daily_max', "2020-01-01 00:00:00", "2020-09-26 00:00:00", 'D', 270),
-        ('weekly_min', "2020-01-01 00:00:00", "2020-09-27 00:00:00", 'W', 40),
-        ('weekly_max', "2017-01-01 00:00:00", "2022-03-05 00:00:00", 'W', 270),
-        ('monthly_min', "2017-01-01 00:00:00", "2022-03-06 00:00:00", 'M', 63),
-        ('monthly_extended', "2015-01-01 00:00:00", "2025-01-01 00:00:00", 'M', 121)
-    ]
+    # Convert granularity_test_dict to the expected tuple format
+    test_cases = []
+    for test_name, test_data in granularity_test_dict.items():
+        test_cases.append((
+            test_name,
+            test_data['start'],
+            test_data['end'],
+            test_data['granularity'],
+            test_data['expected_rows']
+        ))
     return test_cases[request.param]
 
 
@@ -189,4 +195,9 @@ def granularity_transition_case(request):
         ('daily_max', 'weekly_min', 'D', 'W'),
         ('weekly_max', 'monthly_min', 'W', 'M'),
     ]
-    return transition_cases[request.param] 
+    return transition_cases[request.param]
+
+@pytest.fixture
+def granularity_test_names():
+    """Fixture that returns the names of all granularity test cases."""
+    return list(granularity_test_dict.keys()) 

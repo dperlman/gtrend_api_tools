@@ -14,7 +14,8 @@ import shutil
 import importlib.resources
 from pathlib import Path
 
-
+GRANULARITY_RULES_NAME = 'granularity_rules.yaml'
+DEFAULT_CONFIG_NAME = 'default_config.yaml'
 
 
 def load_config() -> dict:
@@ -50,7 +51,7 @@ def load_config() -> dict:
         _print_if_verbose("User config doesn't exist or is empty, copying from package default")
         try:
             # Get the path to the default config file
-            default_config_path = importlib.resources.files('gtrend_api_tools.config').joinpath('default_config.yaml')
+            default_config_path = importlib.resources.files('gtrend_api_tools.config').joinpath(DEFAULT_CONFIG_NAME)
             _print_if_verbose(f"Default config path: {default_config_path}")
             
             # Direct file copy
@@ -75,24 +76,17 @@ def load_config() -> dict:
     # Load granularity rules from package config
     try:
         _print_if_verbose("\nLoading granularity rules...")
-        rules_path = importlib.resources.files('gtrend_api_tools.config').joinpath('granularity_rules.yaml')
+        rules_path = importlib.resources.files('gtrend_api_tools.config').joinpath(GRANULARITY_RULES_NAME)
         with open(rules_path, 'r') as f:
             rules_config = yaml.safe_load(f)
             if rules_config and 'granularity_rules' in rules_config:
                 config['granularity_rules'] = rules_config['granularity_rules']
                 _print_if_verbose("Successfully loaded granularity rules")
+            if rules_config and 'api_granularity_overrides' in rules_config:
+                config['api_granularity_overrides'] = rules_config['api_granularity_overrides']
+                _print_if_verbose("Successfully loaded api granularity overrides")
     except Exception as e:
         _print_if_verbose(f"Warning: Failed to load granularity rules: {e}")
-    
-    # Sort granularity rules by max_hours
-    if 'granularity_rules' in config:
-        rules = config['granularity_rules']
-        # Convert to list of tuples (code, rule) for sorting
-        rule_items = list(rules.items())
-        # Sort by max_hours in ascending order
-        rule_items.sort(key=lambda x: x[1].get('max_hours', float('inf')))
-        # Convert back to dict
-        config['granularity_rules'] = dict(rule_items)
     
     _print_if_verbose("\nFinal config contents:")
     _print_if_verbose(yaml.dump(config))

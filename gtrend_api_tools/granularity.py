@@ -21,13 +21,14 @@ class GranularityManager:
     The rules are sorted by max_days in ascending order, with rules having
     max_days=None placed at the end.
     """
-    def __init__(self, config: Optional[dict] = None, verbose: bool = False):
+    def __init__(self, config: Optional[dict] = None, api: Optional[str] = None, verbose: bool = False):
         """
         Initialize granularity manager.
         
         Args:
             config (Optional[dict]): Configuration dictionary containing granularity rules. 
                                    If None, will load config automatically.
+            api (Optional[str]): API name. If provided, will use any API-specific overrides in the config file.
             verbose (bool): Whether to print debug information. Defaults to True.
         """
         if config is None:
@@ -38,6 +39,16 @@ class GranularityManager:
         self.rules = config.get('granularity_rules', {})
         if not self.rules:
             raise ValueError("No granularity rules found in config")
+        self.api_rules = config.get('api_granularity_overrides', {})
+        #print(f"GranularityManager(api={api}) loaded rules...")
+        self.api = api
+        if api:
+            #print(f"Using api_granularity_overrides for {api}")
+            #print(f"api_rules: {self.api_rules}")
+            if api in self.api_rules and self.api_rules[api] is not None:
+                self.rules.update(self.api_rules[api])
+        #print(f"GranularityManager(api={api}) rules:")
+        #print(self.rules)
         self.verbose = verbose
 
 
@@ -68,6 +79,16 @@ class GranularityManager:
             freq_str = str(freq)
             return freq_str
         
+        # If we get here, we are in trouble. the way I thought I would calculate it manually is a bad idea.
+        raise ValueError(f"Could not determine granularity from index: {index}")
+        print("*"*100)
+        print("EMERGENCY: get_index_granularity is not implemented correctly")
+        print("*"*100)
+        ########################################################################################################################
+        # This is actually completely wrong, going to have to fix this
+        # Nothing after this line is correct
+        ########################################################################################################################
+
         # If neither of those worked, try to infer from time differences
         # Convert PeriodIndex to DatetimeIndex if needed
         if isinstance(index, pd.PeriodIndex):
@@ -90,9 +111,7 @@ class GranularityManager:
         _print_if_verbose(f"Converted to timedelta: {td}", self.verbose)
         
         # Now get the granularity info and return it.
-        ########################################################################################################################
-        # This is actually completely wrong, going to have to fix this
-        ########################################################################################################################
+
         return self.get_granularity_by_time_diff(td)['freq']
     
 
@@ -223,23 +242,22 @@ class GranularityManager:
 
         _print_if_verbose(f"Week difference: {week_diff}, day difference: {day_diff}, hour difference: {hour_diff}", self.verbose)
         
-        return self.get_granularity_by_limit_units(start_dt, end_dt)
+        return self.get_granularity_by_max_records_iteration(start_dt, end_dt)
     
 
-    def get_granularity_by_limit_units(
+    def get_granularity_by_max_records_iteration(
         self,
         start_dt: datetime,
         end_dt: datetime,
     ) -> str:
         """
-        Get the granularity code for a given time difference using the limit_units and limit_value.
+        Get the granularity code for a given time difference by iteratively making PeriodIndex objects
+        with different frequencies until we find the one that fits within the max_records limit.
         """
         from gtrend_api_tools.date_strings import get_resolution_details
         # Determine granularity based on rules in order
         for code, rule in self.rules.items():
             search_resolution = rule.get('search_resolution')
-            limit_units = rule.get('limit_units')
-            limit_value = rule.get('limit_value')
             freq = rule.get('freq')
             max_records = rule.get('max_records')
             
@@ -253,9 +271,9 @@ class GranularityManager:
             period_index = pd.period_range(start=truncated_start, end=truncated_end, freq=freq)
             num_periods = len(period_index)
             
-            _print_if_verbose(f"Rule {code}: {num_periods} periods vs limit {limit_value}", self.verbose)
+            _print_if_verbose(f"Rule {code}: {num_periods} periods vs limit {max_records}", self.verbose)
             
-            # Stop when our number of periods is within the limit_value
+            # Stop when our number of periods is within the max_records limit
             if num_periods <= max_records:
                 _print_if_verbose(f"Selected granularity {code} ({num_periods} periods <= {max_records})", self.verbose)
                 break
@@ -266,38 +284,38 @@ class GranularityManager:
         return rule
 
 
-    def get_granularity_by_time_diff(
-        self,
-        time_diff: timedelta
-    ) -> str:
-        """
-        Get the granularity code for a given time difference.
-        NOTE: This is deprecated and will be removed in the future.
-        Use get_granularity_by_limit_units instead.
-        """ 
-        # Determine granularity based on rules in order
-        for code, rule in self.rules.items():
-            # Check if we are on the last one, with no limit on max_hours
-            if rule['max_hours'] == float('inf'):
-                _print_if_verbose(f"Selected granularity {code} (no limit on max_hours)", self.verbose)
-                break
-            # Create timedelta object based on max_hours
-            max_timedelta = timedelta(hours=rule['max_hours'])
-            max_days_info = f", max_days: {rule.get('max_days')}" if 'max_days' in rule else ""
-            _print_if_verbose(f"Rule {code} has max_hours: {rule['max_hours']}{max_days_info} -> timedelta: {max_timedelta}", self.verbose)
+    # def get_granularity_by_time_diff(
+    #     self,
+    #     time_diff: timedelta
+    # ) -> str:
+    #     """
+    #     Get the granularity code for a given time difference.
+    #     NOTE: This is deprecated and will be removed in the future.
+    #     Use get_granularity_by_limit_units instead.
+    #     """ 
+    #     # Determine granularity based on rules in order
+    #     for code, rule in self.rules.items():
+    #         # Check if we are on the last one, with no limit on max_hours
+    #         if rule['max_hours'] == float('inf'):
+    #             _print_if_verbose(f"Selected granularity {code} (no limit on max_hours)", self.verbose)
+    #             break
+    #         # Create timedelta object based on max_hours
+    #         max_timedelta = timedelta(hours=rule['max_hours'])
+    #         max_days_info = f", max_days: {rule.get('max_days')}" if 'max_days' in rule else ""
+    #         _print_if_verbose(f"Rule {code} has max_hours: {rule['max_hours']}{max_days_info} -> timedelta: {max_timedelta}", self.verbose)
             
-            # Apply the max_inclusive logic
-            if rule['max_inclusive']:
-                if time_diff <= max_timedelta:
-                    _print_if_verbose(f"Selected granularity {code} (inclusive rule, time_diff={time_diff} <= max_timedelta={max_timedelta})", self.verbose)
-                    break
-            else:
-                if time_diff < max_timedelta:
-                    _print_if_verbose(f"Selected granularity {code} (exclusive rule, time_diff={time_diff} < max_timedelta={max_timedelta})", self.verbose)
-                    break
+    #         # Apply the max_inclusive logic
+    #         if rule['max_inclusive']:
+    #             if time_diff <= max_timedelta:
+    #                 _print_if_verbose(f"Selected granularity {code} (inclusive rule, time_diff={time_diff} <= max_timedelta={max_timedelta})", self.verbose)
+    #                 break
+    #         else:
+    #             if time_diff < max_timedelta:
+    #                 _print_if_verbose(f"Selected granularity {code} (exclusive rule, time_diff={time_diff} < max_timedelta={max_timedelta})", self.verbose)
+    #                 break
         
-        rule['granularity'] = code
-        return rule
+    #     rule['granularity'] = code
+    #     return rule
     
 
 

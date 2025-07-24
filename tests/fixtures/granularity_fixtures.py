@@ -36,8 +36,6 @@ def api_instances_for_comparison(granularity_api_1, granularity_api_2, available
     api2_name = granularity_api_2
     
     # Create both instances using the api_instance fixture
-    from gtrend_api_tools.APIs import api_utils
-    from importlib import import_module
     
     def create_api_instance(api_name):
         # Check if API is paid and requires an API key
@@ -49,8 +47,9 @@ def api_instances_for_comparison(granularity_api_1, granularity_api_2, available
             api_key = None
         
         # Import the API class
-        module = import_module(f'gtrend_api_tools.APIs.{api_name}')
-        ApiClass = getattr(module, api_utils.get_api_class_name(f'{api_name}.py'))
+        from gtrend_api_tools.APIs.api_utils import get_api_class
+        
+        ApiClass = get_api_class(api_name)
         
         return ApiClass(api_key=api_key, verbose=LOG_LEVEL)
     

@@ -1,14 +1,16 @@
 """
-Simple granularity tests without pytest - importing test data from fixtures.
+Simple granularity tests without pytest - importing test data from search_fixtures.
 """
 from datetime import datetime, timezone 
 from gtrend_api_tools.granularity import GranularityManager
 
-granularity_manager = GranularityManager(verbose=True)
+granularity_manager = GranularityManager(verbose=True, api='brightdata')
 # Import the fixture functions and call them to get the data
 from fixtures.search_fixtures import granularity_test_dict
 
 GRANULARITY_TEST_DATES = granularity_test_dict
+
+print(granularity_manager.rules)
 
 # Example usage:
 if __name__ == "__main__":

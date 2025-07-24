@@ -2,7 +2,7 @@ import pytest
 from datetime import datetime, timezone
 from dateparser import parse
 
-API_TO_TEST = 'searchapi'
+API_TO_TEST = 'scrapingdog'
 
 @pytest.mark.parametrize('api_key,api_instance', [(API_TO_TEST, API_TO_TEST)], indirect=True)
 def test_api_search_history(api_instance, test_terms, test_dates):
@@ -15,6 +15,7 @@ def test_api_search_history(api_instance, test_terms, test_dates):
     # First search
     api_instance.search(search_term=test_terms['term1'], start=start_1, end=end_1)
     assert api_instance.data
+    assert len(api_instance.data) > 1
     assert len(api_instance.search_history) == 1
     assert api_instance.search_history[0].terms == [test_terms['term1']]
     assert len(api_instance.search_result_history) == 1
@@ -27,6 +28,7 @@ def test_api_search_history(api_instance, test_terms, test_dates):
     # Second search
     api_instance.search(search_term=test_terms['term2'], start=start_2, end=end_2)
     assert api_instance.data
+    assert len(api_instance.data) > 1
     assert len(api_instance.search_history) == 2
     assert api_instance.search_history[1].terms == [test_terms['term2']]
     assert len(api_instance.search_result_history) == 2
@@ -39,6 +41,7 @@ def test_api_search_history(api_instance, test_terms, test_dates):
     # Third search
     api_instance.search(search_term=test_terms['term3'], start=start_2, end=end_2)
     assert api_instance.data
+    assert len(api_instance.data) > 1
     assert len(api_instance.search_history) == 3
     assert api_instance.search_history[2].terms == [test_terms['term3']]
     assert len(api_instance.search_result_history) == 3
@@ -60,6 +63,7 @@ def test_api_single_term(api_instance, test_terms, test_dates):
     
     # Check standardized data structure
     assert api_instance.data
+    assert len(api_instance.data) > 1
     assert all(len(entry['values']) == 1 for entry in api_instance.data)  # One term per entry
     assert all(entry['values'][0]['query'] == search_term for entry in api_instance.data)
     
@@ -78,6 +82,7 @@ def test_api_multiple_terms(api_instance, test_terms, test_dates):
     
     # Check standardized data structure
     assert api_instance.data
+    assert len(api_instance.data) > 1
     assert all(len(entry['values']) == len(search_term) for entry in api_instance.data)  # All terms per entry
     # Check that all search terms are present in each entry
     for entry in api_instance.data:
@@ -101,6 +106,7 @@ def test_api_datetime_input(api_instance, test_terms, test_dates):
     
     # Check standardized data structure
     assert api_instance.data
+    assert len(api_instance.data) > 1
     # Check date range
     # print([entry['date'] for entry in api_instance.data])
     #print(api_instance.data[0])

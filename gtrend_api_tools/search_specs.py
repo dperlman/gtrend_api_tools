@@ -41,6 +41,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional, Union, Dict, Any, List, Tuple
 from dateutil.parser import parse, ParserError
 from gtrend_api_tools.utils import load_config, _print_if_verbose, period_index_range_info, datetime_index_range_info
+from gtrend_api_tools.APIs.api_utils import available_apis
 from gtrend_api_tools.date_strings import parse_date_str, split_date_range_str, cleanup_date_str, get_resolution_details # parse_date_str is a wrapper for dateutil.parser.parse where we set the default the way we want it
 from gtrend_api_tools.granularity import GranularityManager
 import pandas as pd
@@ -297,7 +298,11 @@ class GtrendDateRange(DateRange):
     calculates the appropriate granularity. If you need to specify granularity explicitly,
     use the DateRange base class instead.
     """
-    def __init__(self, *args, **kwargs):
+    def __init__(self,
+                 *args,
+                 api: Optional[str] = None,
+                 granularity_manager: Optional[GranularityManager] = None,
+                 **kwargs):
         # Just make sure we are not receiving the arguments `granularity` or `freq` or `resolution`.
         if 'granularity' in kwargs:
             raise ValueError(f"{self.__class__.__name__} does not accept the argument `granularity`")
@@ -305,6 +310,10 @@ class GtrendDateRange(DateRange):
             raise ValueError(f"{self.__class__.__name__} does not accept the argument `freq`")
         if 'resolution' in kwargs:
             raise ValueError(f"{self.__class__.__name__} does not accept the argument `resolution`")
+        if 'start' not in kwargs or kwargs['start'] is None:
+            raise ValueError(f"{self.__class__.__name__} requires the argument `start`")
+        if 'end' not in kwargs or kwargs['end'] is None:
+            raise ValueError(f"{self.__class__.__name__} requires the argument `end`")
         # OK that's all. just go ahead with the initialization.
         # Additional parameters that are specific to GtrendDateRange
         # If gtrend_params is not provided, set it to an empty dictionary
@@ -316,6 +325,9 @@ class GtrendDateRange(DateRange):
             self.gtrend_params['override_hours'] = False
         # Remove the gtrend_params from the kwargs
         kwargs.pop('gtrend_params')
+        self.api = api
+        self.granularity_manager = granularity_manager
+
         # Now call the base class __init__
         super().__init__(*args, **kwargs)
 
@@ -337,7 +349,8 @@ class GtrendDateRange(DateRange):
         The PeriodIndex will also give us the duration, num_periods, and mean_period_duration,
         with help from the utils.py function period_index_range_info.
         """
-        self.granularity_manager = GranularityManager() # will load config automatically
+        if self.granularity_manager is None:
+            self.granularity_manager = GranularityManager(api=self.api) # will load config automatically
         self.granularity_info = self.granularity_manager.calculate_search_granularity(
             start_date=self.original_start_dt,
             end_date=self.original_end_dt
@@ -361,10 +374,10 @@ class GtrendDateRange(DateRange):
         res_args, format_str_ymd, format_str_mdy = get_resolution_details(self.search_resolution)
         start_dt = self.start_dt.replace(**res_args)
         last_index_dt = self.last_index_dt.replace(**res_args)
-        self.str.search_start_ymd = start_dt.strftime(format_str_ymd)
-        self.str.search_start_mdy = start_dt.strftime(format_str_mdy)
-        self.str.search_end_ymd = last_index_dt.strftime(format_str_ymd)
-        self.str.search_end_mdy = last_index_dt.strftime(format_str_mdy)
+        self.str.search_start_ymd = self.original_start_dt.strftime(format_str_ymd)
+        self.str.search_start_mdy = self.original_start_dt.strftime(format_str_mdy)
+        self.str.search_end_ymd = self.original_end_dt.strftime(format_str_ymd)
+        self.str.search_end_mdy = self.original_end_dt.strftime(format_str_mdy)
         # These are the new properties we have, beyond the base class properties
         self.str.search_range_ymd = f"{self.str.search_start_ymd}{self.range_space}{self.str.search_end_ymd}"
         self.str.search_range_mdy = f"{self.str.search_start_mdy}{self.range_space}{self.str.search_end_mdy}"
@@ -395,7 +408,6 @@ class SearchSpec(GtrendDateRange):
         self,
         search_term: Union[str, List[str]],
         date_range: Optional[DateRange] = None,
-        api: Optional[str] = None,
         **kwargs
     ):
         """
@@ -413,13 +425,14 @@ class SearchSpec(GtrendDateRange):
             self.__dict__.update(new_instance.__dict__)
         else:
             # Standard initialization path
-            # Filter out search_term from kwargs before passing to DateRange
-            date_kwargs = {k: v for k, v in kwargs.items() if k != 'search_term'}
-            # Pass filtered kwargs to DateRange constructor
-            super().__init__(**date_kwargs)
+            # # Filter out search_term from kwargs before passing to DateRange
+            # date_kwargs = {k: v for k, v in kwargs.items() if k != 'search_term'}
+            # # Pass filtered kwargs to DateRange constructor
+            # super().__init__(**date_kwargs)
+            super().__init__(**kwargs)
             
-            # Initialize SearchSpec-specific attributes
-            self._init_search_spec(search_term)
+        # Initialize SearchSpec-specific attributes
+        self._init_search_spec(search_term)
     
     def __str__(self):
         return f"SearchSpec {self.term_string} {self.str.full_range_ymd}"
@@ -476,13 +489,13 @@ class SearchSpec(GtrendDateRange):
         instance.num_periods = date_range.num_periods
         instance.duration = date_range.duration
         instance.mean_period_duration = date_range.mean_period_duration
-        
-        # Initialize SearchSpec-specific attributes
-        instance._init_search_spec(search_term)
+
+        # Initialize api if provided
+        instance.api = kwargs['api'] if 'api' in kwargs else None
         
         return instance
     
-    def _init_search_spec(self, search_term: Union[str, List[str]], api: Optional[str] = None) -> None:
+    def _init_search_spec(self, search_term: Union[str, List[str]]) -> None:
         """
         Initialize SearchSpec-specific attributes.
         This method handles the common initialization logic for both __init__ and _from_date_range.
@@ -494,13 +507,9 @@ class SearchSpec(GtrendDateRange):
         # Load config
         self.config = load_config()
         # Check if api is provided and validate it against allowed APIs in config
-        if api is not None:
-            allowed_apis = self.config.get('allowed_apis', [])
-            if allowed_apis and api not in allowed_apis:
-                raise ValueError(f"API '{api}' is not allowed. Allowed APIs are: {allowed_apis}")
-            self.api = api
-        else:
-            self.api = None
+        _print_if_verbose(f"SearchSpec(api={self.api}) initializing search spec")
+        if self.api is not None and self.api not in available_apis:
+            raise ValueError(f"API '{self.api}' is not allowed. Allowed APIs are: {available_apis.keys()}")
         
         # Check for false-like values
         if not search_term:
@@ -519,10 +528,10 @@ class SearchSpec(GtrendDateRange):
         self.term_string = ','.join(self.terms)
 
     def __str__(self):
-        return f"{self.__class__.__name__} {self.term_string} {self.str.full_range_ymd}"
+        return f"{self.__class__.__name__} {self.term_string} {self.str.index_range_ymd}"
     
     def __repr__(self):
-        return (f"{self.__class__.__name__}(search_term={self.term_string}, start_date={self.str.start_ymd}, end_date={self.str.end_ymd}, "
+        return (f"{self.__class__.__name__}(search_term={self.term_string}, range_str={self.str.index_range_ymd}, "
                 f"granularity={self.granularity})")
 
 

@@ -6,7 +6,7 @@ import pandas as pd
 import unicodedata
 from gtrend_api_tools.APIs.base_classes import API_Call
 from gtrend_api_tools.search_specs import SearchSpec, DateRange
-from gtrend_api_tools.date_strings import parse_date_str, cleanup_date_str, standardize_date_time_str
+from gtrend_api_tools.date_strings import parse_date_str, cleanup_date_str, standardize_date_range_start
 
 class Brightdata(API_Call):
     def __init__(
@@ -100,7 +100,7 @@ class Brightdata(API_Call):
         for entry in timeline:
             raw_date_list.append(cleanup_date_str(entry['formattedTime']))
             standardized_entry = {
-                'date': standardize_date_time_str(entry['formattedTime']),
+                'date': standardize_date_range_start(entry['formattedTime']),
                 'values': [
                     {
                         'value': entry['formattedValue'][i],

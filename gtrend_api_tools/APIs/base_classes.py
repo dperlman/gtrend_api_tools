@@ -2,10 +2,10 @@ from typing import Union, List, Optional, Dict, Any, Callable
 from datetime import datetime
 import pandas as pd
 from gtrend_api_tools.utils import _print_if_verbose, load_config
-from gtrend_api_tools.APIs.api_utils import standard_dict_to_df, load_api_config
+from gtrend_api_tools.APIs.api_utils import standard_dict_to_df, api_string
 from gtrend_api_tools.search_specs import DateRange, SearchSpec
 import requests
-
+from gtrend_api_tools.granularity import GranularityManager
 
 class TrendSearchResult:
     """
@@ -136,6 +136,7 @@ class API_Call:
         base_trends_endpoint: Optional[str] = "https://trends.google.com/trends/explore", # leave this the same for reference purposes
         method: str = 'GET',
         granularity: str = 'D',
+        emulate_api: bool = False,
         **kwargs
     ):
         """
@@ -182,6 +183,8 @@ class API_Call:
         self.base_trends_endpoint = base_trends_endpoint
         self.method = method
         self.granularity = granularity
+        self.api_string = self._api_string()
+        self.emulate_api = emulate_api or self.api_string # if we are not emulating an API, we use the actual API string
         self.kwargs = kwargs
         self._search_history = []
         self._search_result_history = []
@@ -194,6 +197,11 @@ class API_Call:
             return print_with_verbose
 
         self.print_func = print_func if print_func is not None else make_print_func(self.verbose)
+
+        # Store a granularity manager for this API
+        # If we are emulating an API, we need to use the API string that is being emulated
+        # Otherwise, we use the API string that is actually being used
+        self.granularity_manager = GranularityManager(api=self.emulate_api)
 
     def setup_search(
         self,
@@ -211,24 +219,22 @@ class API_Call:
         Returns:
             API_Call: Returns self for method chaining
         """
+        
         self.print_func(f"Preparing {self.__class__.__name__} search request:")
         if search_spec is not None and isinstance(search_spec, SearchSpec):
             # Check if the provided search_spec's API matches our API
-            our_api_string = self._api_string()
-            if our_api_string is not None and hasattr(search_spec, 'api') and search_spec.api != our_api_string:
-                self.print_func(f"Warning: SearchSpec API '{search_spec.api}' doesn't match this API class '{our_api_string}'")
+            if self.api_string is not None and hasattr(search_spec, 'api') and search_spec.api != self.api_string:
+                self.print_func(f"Warning: SearchSpec API '{search_spec.api}' doesn't match this API class '{self.api_string}'")
             # Use provided search_spec directly
             self.search_spec = search_spec
         else:
-            # Get the API string for this class
-            api_string = self._api_string()
-            
             # Pass all kwargs to SearchSpec constructor, including the api parameter
             search_kwargs = kwargs.copy()
-            if api_string is not None:
-                search_kwargs['api'] = api_string
-            
+            if self.api_string is not None:
+                self.print_func(f"Setting search_spec api to {self.api_string}")
+                search_kwargs['api'] = self.api_string
             self.search_spec = SearchSpec(**search_kwargs)
+
         self.print_func(f"Search spec: {self.search_spec}")
 
         self.print_func(f"  Search term: {self.search_spec.term_string}")
@@ -415,18 +421,9 @@ class API_Call:
         Returns:
             Optional[str]: The API string (e.g., 'serpapi', 'trendspy') or None if not found
         """
-        # Load available_apis configuration
-        available_apis = load_api_config()
-        
         # Get the class name
         class_name = self.__class__.__name__
-        
-        # Search for the class name in the configuration
-        for api_string, api_info in available_apis.items():
-            if api_info.get('class') == class_name:
-                return api_string
-        
-        return None
+        return api_string(class_name)
 
     @property
     def raw_data(self) -> Any:

@@ -23,7 +23,9 @@ def standardize_date_time_str(date_time_str: str) -> str:
     Standardize a date time string to a YYYY-MM-DDTHH:MM:SS format.
     """
     clean_date_time_str = cleanup_date_str(date_time_str)
+    #print(f"clean_date_time_str: {clean_date_time_str}")
     parsed_date = parse_date_str(clean_date_time_str)
+    #print(f"parsed_date: {parsed_date}")
     return parsed_date.strftime("%Y-%m-%dT%H:%M:%S")
 
 def split_date_range_str(date_str: str) -> tuple:
@@ -36,6 +38,18 @@ def split_date_range_str(date_str: str) -> tuple:
         tuple: The start and end date as strings
     """
     clean_date_str = cleanup_date_str(date_str)
+
+    # test for cases like
+    #  Dec 31, 2017 - Jan 6, 2018
+    #  Dec 29, 2019 - Jan 4, 2020
+    # with zero or more spaces around the - or single space
+    mdy_date_match = re.search(
+        r'^(\w+\s+\d{1,2}[, ]+\d{4})\s*[- ]\s*(\w+\s+\d{1,2}[, ]+\d{4})',
+        clean_date_str
+    )
+    if mdy_date_match:
+        start_date, end_date = mdy_date_match.groups()
+        return start_date, end_date
 
     # test for cases like
     #  2020-01-01T14:30:45 2020-01-07T14:30:45
@@ -218,7 +232,7 @@ def standardize_date_format(date_str: str) -> str:
     """
     cleaned_date_str = cleanup_date_str(date_str)
     date_dt = parse_date_str(cleaned_date_str)
-    return date_dt.strftime("%Y-%m-%d")
+    return date_dt.strftime("%Y-%m-%dT%H:%M:%S")
 
 def standardize_date_range_start(date_str: str) -> str:
     """

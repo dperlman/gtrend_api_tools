@@ -10,6 +10,7 @@ from .fixtures.api_fixtures import API_TO_TEST, VERBOSE, api_key, api_instance
 from .fixtures.config_fixtures import test_config, available_apis
 from .fixtures.granularity_fixtures import granularity_api_1, granularity_api_2, api_instances_for_comparison, granularity_manager
 from .fixtures.search_fixtures import test_terms, test_dates, multiple_terms, granularity_test_dates, granularity_test_case, granularity_transition_case
+from .fixtures.date_string_fixtures import test_first_date_strings
 
 # Test configuration
 API_TO_TEST = 'dummy_api'  # Specify which API to test
@@ -40,11 +41,9 @@ def api_instance(api_key, available_apis, request):
         pytest.skip(f"No API key found for {api_name} in config")
     
     # Import the API class
-    from gtrend_api_tools.APIs import api_utils
-    from importlib import import_module
+    from gtrend_api_tools.APIs.api_utils import get_api_class
     
-    module = import_module(f'gtrend_api_tools.APIs.{api_name}')
-    ApiClass = getattr(module, api_utils.get_api_class_name(f'{api_name}.py'))
+    ApiClass = get_api_class(api_name)
     
     return ApiClass(api_key=api_key, verbose=VERBOSE)
 
@@ -69,5 +68,6 @@ __all__ = [
     'available_apis',
     'granularity_api_1',
     'granularity_api_2',
-    'api_instances_for_comparison'
+    'api_instances_for_comparison',
+    'test_first_date_strings'
 ] 

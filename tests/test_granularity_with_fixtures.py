@@ -12,7 +12,22 @@ from datetime import datetime
 class TestGranularityDetection:
     """Test class for granularity detection using fixture data."""
     
-    @pytest.mark.parametrize("granularity_test_case", range(13), indirect=True)
+    # @pytest.fixture(autouse=True)
+    # def setup_test_data(self, granularity_test_dates):
+    #     """Setup test data and count test cases."""
+    #     self.num_test_cases = 0
+    #     self.test_case_names = []
+    #     for test_name, test_data in granularity_test_dates.items():
+    #         # Validate the test cases are in the fixture
+    #         assert 'start' in test_data
+    #         assert 'end' in test_data
+    #         assert 'granularity' in test_data
+    #         assert 'expected_rows' in test_data
+    #         self.num_test_cases += 1
+    #         self.test_case_names.append(test_name)
+    #     return self.num_test_cases
+    
+    @pytest.mark.parametrize("granularity_test_case", range(14), indirect=True)
     def test_granularity_boundary(self, granularity_manager, granularity_test_case):
         """Test that each date range produces the expected granularity."""
         test_name, start_date, end_date, expected_granularity, expected_rows = granularity_test_case

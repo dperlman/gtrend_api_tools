@@ -29,6 +29,23 @@ def load_api_config() -> Dict[str, Any]:
     with open(config_path, 'r') as f:
         return yaml.safe_load(f)
 
+# Load API metadata from configuration
+available_apis = load_api_config()
+
+def get_free_apis():
+    """Get dictionary of available free APIs with their metadata"""
+    return {name: info for name, info in available_apis.items() 
+            if info['type'] == 'free'}
+
+def get_paid_apis():
+    """Get dictionary of available paid APIs with their metadata"""
+    return {name: info for name, info in available_apis.items() 
+            if info['type'] == 'paid'}
+
+def get_api_info(name: str):
+    """Get metadata for a specific API"""
+    return available_apis.get(name)
+
 def get_api_class_name(file_name: str) -> Optional[str]:
     """
     Get the class name for an API from its file name using the configuration.
@@ -42,13 +59,56 @@ def get_api_class_name(file_name: str) -> Optional[str]:
     # Remove .py extension
     api_name = file_name.replace('.py', '')
     
-    # Load configuration
-    config = load_api_config()
-    
     # Look up the API in the config
-    if api_name in config:
-        return config[api_name]['class']
+    if api_name in available_apis:
+        return available_apis[api_name]['class']
     return None
+
+def get_api_class(api_name: str) -> Any:
+    """
+    Get an API class from an API name.
+    
+    Args:
+        api_name (str): The name of the API (e.g., 'serpapi', 'dummy_api')
+        
+    Returns:
+        Any: The API class (not an instance)
+        
+    Raises:
+        ValueError: If the API name is not found in configuration
+        ImportError: If the API module cannot be imported
+        AttributeError: If the API class cannot be found in the module
+    """
+    from importlib import import_module
+    
+    # Get the API class name
+    class_name = get_api_class_name(api_name)
+    if not class_name:
+        raise ValueError(f"API '{api_name}' not found in configuration")
+    
+    # Import the API module
+    module = import_module(f'gtrend_api_tools.APIs.{api_name}')
+    
+    # Get the API class
+    ApiClass = getattr(module, class_name)
+    
+    # Create and return the API instance
+    return ApiClass
+
+def api_string(api_class_name: str) -> Optional[str]:
+    """
+    Get the API string identifier for this class from available_apis configuration.
+    
+    Returns:
+        Optional[str]: The API string (e.g., 'serpapi', 'trendspy') or None if not found
+    """
+    # Search for the class name in the configuration
+    for api_string, api_info in available_apis.items():
+        if api_info.get('class') == api_class_name:
+            return api_string
+    
+    return None
+
 
 def change_tor_identity(password: Optional[str], print_func: Optional[Callable] = None, control_port: Optional[int] = None) -> None:
     """
