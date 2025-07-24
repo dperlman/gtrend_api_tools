@@ -32,4 +32,4 @@ class TestAPIGranularityDetection:
         for term_name in term_list:
             assert term_name in df.columns, f"Column '{term_name}' missing in DataFrame for test '{test_name}'"
         assert len(df) == expected_rows, f"Row count {len(df)} does not match expected {expected_rows} for test '{test_name}'"
-
+        assert len(df) > 2, f"Row count {len(df)} is unreasonably small for test '{test_name}'"

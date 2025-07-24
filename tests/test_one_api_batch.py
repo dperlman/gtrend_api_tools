@@ -4,7 +4,8 @@ from gtrend_api_tools.APIs.batch import TrendSearchBatch
 from gtrend_api_tools.search_specs import SearchSpec
 
 # Configure which API to test - change this to test different APIs
-API_TO_TEST = 'searchapi'
+API_TO_TEST = 'scrapingdog'
+ITERATE_METHOD = "async_internal_thread"
 
 @pytest.mark.parametrize('api_key,api_instance', [(API_TO_TEST, API_TO_TEST)], indirect=True)
 def test_execute_iterate(api_instance, test_terms, test_dates):
@@ -16,7 +17,7 @@ def test_execute_iterate(api_instance, test_terms, test_dates):
     """
     # Create a main search specification as a template
     main_spec = SearchSpec(
-        search_term=test_terms['term1'],
+        search_term=test_terms['term5'],
         start=test_dates['short_range']['start'],
         end=test_dates['short_range']['end'],
         api=API_TO_TEST
@@ -26,14 +27,14 @@ def test_execute_iterate(api_instance, test_terms, test_dates):
     spec_list = [
         # First spec: different term, same date range
         SearchSpec(
-            search_term=test_terms['term2'],
+            search_term=test_terms['term1'],
             start=test_dates['short_range']['start'],
             end=test_dates['short_range']['end'],
             api=API_TO_TEST
         ),
         # Second spec: same term, different date range
         SearchSpec(
-            search_term=test_terms['term1'],
+            search_term=test_terms['term2'],
             start=test_dates['medium_range']['start'],
             end=test_dates['medium_range']['end'],
             api=API_TO_TEST
@@ -51,7 +52,7 @@ def test_execute_iterate(api_instance, test_terms, test_dates):
     batch = TrendSearchBatch(
         main_spec=main_spec,
         spec_list=spec_list,
-        method="iterate"
+        method=ITERATE_METHOD # options are iterate, async_internal_thread, async_poll, async_webhook
     )
     
     # Execute the batch
@@ -66,7 +67,7 @@ def test_execute_iterate(api_instance, test_terms, test_dates):
     assert len(results) == 3, f"Expected 3 results, got {len(results)}"
     
     # Check that there were no errors
-    assert len(errors) == 0, f"Expected 0 errors, got {len(errors)}: {errors}"
+    assert len(errors) == 3 and all((not error) for error in errors), f"Expected 0 errors, got {sum(bool(error) for error in errors)}: {errors}"
     
     # Check progress
     assert progress['completed'] == 3, f"Expected 3 completed, got {progress['completed']}"
@@ -80,7 +81,7 @@ def test_execute_iterate(api_instance, test_terms, test_dates):
         assert hasattr(result, 'data'), f"Result {i} missing data"
         assert hasattr(result, 'dataframe'), f"Result {i} missing dataframe"
         assert hasattr(result, 'search_spec'), f"Result {i} missing search_spec"
-        
+
         # Check that the search_spec matches what we expect
         expected_spec = spec_list[i]
         assert result.search_spec.term_string == expected_spec.term_string, \
@@ -106,5 +107,5 @@ def test_execute_iterate(api_instance, test_terms, test_dates):
            results[0].search_spec.end_dt != results[1].search_spec.end_dt, \
         "First two results should have different date ranges"
     
-    print(f"✅ Batch test completed successfully with {len(results)} results and {len(errors)} errors")
+    print(f"✅ Batch test completed successfully with {sum(bool(r) for r in results)} results and {sum(bool(e) for e in errors)} errors")
     print(f"   Progress: {progress['completed']}/{progress['total']} ({progress['percentage']:.1f}%)") 

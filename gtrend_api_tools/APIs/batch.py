@@ -7,6 +7,7 @@ from typing import Union, List, Dict, Any, Optional
 from types import SimpleNamespace
 from gtrend_api_tools.search_specs import SearchSpec
 from gtrend_api_tools.APIs.base_classes import API_Call, TrendSearchResult
+from gtrend_api_tools.APIs.api_utils import available_apis
 
 
 class TrendSearchBatch:
@@ -21,7 +22,8 @@ class TrendSearchBatch:
         self,
         main_spec: SearchSpec,
         spec_list: Union[List[SearchSpec], List[Dict[str, Any]], List[SimpleNamespace]],
-        method: str = "iterate"
+        method: str = "iterate",
+        max_workers: int = 10
     ):
         """
         Initialize the TrendSearchBatch.
@@ -41,11 +43,12 @@ class TrendSearchBatch:
         self.main_spec = main_spec
         self.spec_list = spec_list
         self.method = method
-        
-        # Validate method parameter
-        valid_methods = ["iterate", "async_poll", "async_webhook"]
-        if method not in valid_methods:
-            raise ValueError(f"Invalid method '{method}'. Must be one of: {valid_methods}")
+        self.max_workers = max_workers
+
+        # # Validate method parameter No, this is handled by the execute method
+        # valid_methods = ["iterate", "async_internal_thread", "async_poll", "async_webhook"]
+        # if method not in valid_methods:
+        #     raise ValueError(f"Invalid method '{method}'. Must be one of: {valid_methods}")
         
         # Process and validate spec_list
         self._process_spec_list()
@@ -61,18 +64,33 @@ class TrendSearchBatch:
         Process the spec_list to ensure all items are SearchSpec objects.
         
         Processing rules:
-        1. If it's a SearchSpec, use as-is
-        2. If it's a DateRange or GtrendDateRange, create SearchSpec using main_spec's search_term
-        3. If it's dict-like or SimpleNamespace-like:
+        1. If main_spec.api is None, fill it in with the first api from spec_list
+        2. Check for api conflicts between main_spec and individual specs
+        3. If it's a SearchSpec, use as-is
+        4. If it's a DateRange or GtrendDateRange, create SearchSpec using main_spec's search_term
+        5. If it's dict-like or SimpleNamespace-like:
            a. Use 'api' property if found, otherwise use from main_spec
            b. Use 'search_term', 'terms', or 'term_string' in that order, otherwise use from main_spec
            c. Use 'range_str' or ('start' and 'end'), otherwise use from main_spec
         """
         from gtrend_api_tools.search_specs import DateRange, GtrendDateRange
         
+        # 1. If main_spec.api is None, fill it in with the first api from spec_list
+        if not hasattr(self.main_spec, 'api') or self.main_spec.api is None:
+            # Find the first spec with an api
+            apis = [spec.api for spec in self.spec_list if spec and hasattr(spec, 'api') and spec.api is not None]
+            api = apis[0] if apis else None
+            self.main_spec.api = api
+            print(f"Warning: main_spec.api was None, automatically set to '{api}' from spec_list")
+
+        
         processed_specs = []
         
         for i, spec in enumerate(self.spec_list):
+            # Check for api conflicts with main_spec
+            if self.main_spec.api and self.main_spec.api != spec.api:
+                print(f"Warning: spec_list[{i}] api '{spec.api}' conflicts with main_spec api '{self.main_spec.api}'")
+            
             if isinstance(spec, SearchSpec):
                 # 1. SearchSpec - use as-is, but fill in api if necessary
                 if not hasattr(spec, 'api') and hasattr(self.main_spec, 'api'):
@@ -156,6 +174,8 @@ class TrendSearchBatch:
         """
         if self.method == "iterate":
             return self._execute_iterate(api_instance)
+        elif self.method == "async_internal_thread":
+            return self._execute_async_internal_thread(api_instance)
         elif self.method == "async_poll":
             return self._execute_async_poll(api_instance)
         elif self.method == "async_webhook":
@@ -189,11 +209,13 @@ class TrendSearchBatch:
                 
                 # Store the result
                 self.results.append(search_result)
+                self.errors.append(None)
                 
                 # Update progress
                 self.completed_count += 1
                 
             except Exception as e:
+                self.results.append(None)
                 # Store error information
                 error_info = {
                     'index': i,
@@ -205,6 +227,91 @@ class TrendSearchBatch:
                 
                 # Still increment completed count since we attempted this search
                 self.completed_count += 1
+        
+        return self
+        
+    def _execute_async_internal_thread(self, api_instance: API_Call) -> 'TrendSearchBatch':
+        """
+        Execute searches concurrently using ThreadPoolExecutor.
+        
+        Args:
+            api_instance (API_Call): The API instance to use for searches
+            
+        Returns:
+            TrendSearchBatch: Returns self for method chaining
+        """
+        import concurrent.futures
+        import threading
+        
+        # Reset results and progress
+        self.results = []
+        self.errors = []
+        self.completed_count = 0
+        
+        # Temporary storage for results and errors in order
+        temp_results = [None] * len(self.spec_list)
+        temp_errors = [None] * len(self.spec_list)
+        
+        # Thread-local storage for API instances
+        thread_local = threading.local()
+        
+        def get_thread_api_instance():
+            """Get or create a thread-local API instance."""
+            if not hasattr(thread_local, 'api_instance'):
+                # Create a new instance of the same API class with the same configuration
+                thread_local.api_instance = api_instance.copy()
+            return thread_local.api_instance
+        
+        def execute_single_search(args):
+            """Execute a single search in a thread."""
+            index, search_spec = args
+            thread_api = get_thread_api_instance()
+            
+            try:
+                # Execute the search using the thread-local API instance
+                thread_api.search(search_spec=search_spec)
+                
+                # Get the search result from the API instance
+                search_result = thread_api.search_result
+                
+                # Store the result at the correct index (thread-safe with locks)
+                with threading.Lock():
+                    temp_results[index] = search_result
+                    temp_errors[index] = None
+                    self.completed_count += 1
+                
+                return None  # Success
+                
+            except Exception as e:
+                # Store error information directly (thread-safe with locks)
+                error_info = {
+                    'index': index,
+                    'search_spec': search_spec,
+                    'error': str(e),
+                    'error_type': type(e).__name__
+                }
+                
+                with threading.Lock():
+                    temp_results[index] = None
+                    temp_errors[index] = error_info
+                    self.completed_count += 1
+                
+                return None  # Error handled
+        
+        # Create arguments list with indices for proper ordering
+        search_args = [(i, spec) for i, spec in enumerate(self.spec_list)]
+        
+        # Execute searches concurrently using ThreadPoolExecutor
+        with concurrent.futures.ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+            # Submit all tasks and wait for completion
+            futures = [executor.submit(execute_single_search, args) for args in search_args]
+            
+            # Wait for all futures to complete
+            concurrent.futures.wait(futures)
+        
+        # Reconstruct results and errors lists in original order
+        self.results = temp_results
+        self.errors = temp_errors
         
         return self
     

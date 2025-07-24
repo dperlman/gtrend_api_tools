@@ -1,6 +1,7 @@
 from typing import Union, List, Optional, Dict, Any, Callable
 from datetime import datetime
 import pandas as pd
+import inspect
 from gtrend_api_tools.utils import _print_if_verbose, load_config
 from gtrend_api_tools.APIs.api_utils import standard_dict_to_df, api_string
 from gtrend_api_tools.search_specs import DateRange, SearchSpec
@@ -553,4 +554,25 @@ class API_Call:
         Args:
             spec (SearchSpec): Search specification to set
         """
-        self._search_history.append(spec) 
+        self._search_history.append(spec)
+    
+    def copy(self) -> 'API_Call':
+        """
+        Create a copy of this API instance with the same initialization parameters.
+        
+        Returns:
+            API_Call: A new instance of the same class with identical configuration
+        """
+        # Get the constructor signature
+        sig = inspect.signature(self.__class__.__init__)
+        
+        # Build kwargs dict with all parameters
+        kwargs = {}
+        for param_name, param in sig.parameters.items():
+            if param_name == 'self':
+                continue  # Skip self parameter
+            if hasattr(self, param_name):
+                kwargs[param_name] = getattr(self, param_name)
+        
+        # Create new instance
+        return type(self)(**kwargs) 

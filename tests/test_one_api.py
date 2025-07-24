@@ -20,7 +20,7 @@ def test_api_search_history(api_instance, test_terms, test_dates):
     assert api_instance.search_history[0].terms == [test_terms['term1']]
     assert len(api_instance.search_result_history) == 1
     assert api_instance.search_result_history[0].search_spec.terms == [test_terms['term1']]
-    
+
     # Check DataFrame conversion for first search
     assert not api_instance.dataframe.empty
     assert test_terms['term1'].replace(' ', '_').lower() in api_instance.dataframe.columns
@@ -60,7 +60,10 @@ def test_api_single_term(api_instance, test_terms, test_dates):
     api_instance.search(search_term=search_term, start=start, end=end)
     #print(f"api_instance.raw_data: {api_instance.raw_data}")
     #print(f"api_instance.data: {api_instance.data}")
-    
+
+    assert hasattr(api_instance, 'search_result')
+    assert hasattr(api_instance.search_result, 'search_spec')
+
     # Check standardized data structure
     assert api_instance.data
     assert len(api_instance.data) > 1
@@ -79,7 +82,10 @@ def test_api_multiple_terms(api_instance, test_terms, test_dates):
     start = test_dates['short_range']['start']
     end = test_dates['short_range']['end']
     api_instance.search(search_term=search_term, start=start, end=end)
-    
+
+    assert hasattr(api_instance, 'search_result')
+    assert hasattr(api_instance.search_result, 'search_spec')
+
     # Check standardized data structure
     assert api_instance.data
     assert len(api_instance.data) > 1
@@ -103,7 +109,10 @@ def test_api_datetime_input(api_instance, test_terms, test_dates):
     start = test_dates['datetime_range']['start']
     end = test_dates['datetime_range']['end']
     api_instance.search(search_term=search_term, start=start, end=end)
-    
+
+    assert hasattr(api_instance, 'search_result')
+    assert hasattr(api_instance.search_result, 'search_spec')
+
     # Check standardized data structure
     assert api_instance.data
     assert len(api_instance.data) > 1
