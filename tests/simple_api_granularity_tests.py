@@ -13,7 +13,7 @@ import os, sys
 from fixtures.search_fixtures import granularity_test_dict
 
 GRANULARITY_TEST_DATES = granularity_test_dict
-API_TO_TEST = 'brightdata'
+API_TO_TEST = 'applescript_safari'
 #CASES_TO_TEST = ['one_minute_max', 'eight_minute_min', 'eight_minute_max', 'sixteen_minute_min', 'sixteen_minute_max', 'hourly_min', 'hourly_max']
 CASES_TO_TEST = ['weekly_min']
 SEARCH_TERM = 'coffee,tea'

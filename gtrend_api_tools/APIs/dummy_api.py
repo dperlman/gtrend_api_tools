@@ -51,7 +51,7 @@ class DummyApi(API_Call):
         )
         self.fill_value = fill_value
 
-    def send_request(self, internal_state: TrendSearchInternalState) -> TrendSearchResult:
+    def send_request(self, internal_state: TrendSearchInternalState) -> Dict[str, Any]:
         """
         Override send_request to generate dummy data instead of making HTTP requests.
         """

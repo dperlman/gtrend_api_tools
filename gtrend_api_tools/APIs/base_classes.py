@@ -1,4 +1,4 @@
-from typing import Union, List, Optional, Dict, Any, Callable
+from typing import Union, List, Optional, Dict, Any, Callable, Tuple
 from datetime import datetime
 import pandas as pd
 import inspect
@@ -177,6 +177,7 @@ class TrendSearchInternalState:
         self.search_result = search_result
         self.search_error = search_error
 
+        self.base_trends_request_params = None
         self.base_trends_request = None
         self.prepared_base_trends_request = None
         self.base_trends_request_url = None
@@ -291,55 +292,24 @@ class API_Call:
         search_spec: Optional[SearchSpec] = None,
         **kwargs
     ) -> 'API_Call':
-        """
-        Search Google Trends using the API.
         
-        Args:
-            search_spec (Optional[SearchSpec]): Pre-configured search specification
-            **kwargs: Arguments passed to SearchSpec constructor (search_term, start_date, end_date, date_range, granularity, verbose)
-            
-        Returns:
-            API_Call: Returns self for method chaining. The raw data is stored in self.raw_data
-        """
-        # Set up the search parameters in the internal state that we track for thread safety
-        internal_state = self.setup_search(search_spec, **kwargs)
-
-        if self.__class__.__name__ == "API_Call":
-            print(f"Base class {self.__class__.__name__} prepares a request directly to Google Trends.")
-            print("We are about to send the request, but it is unlikely this will be useful in any way.")
-            print("Google Trends URL:")
-            print(internal_state.base_trends_request_url)
-
-        # Make the request
-        response_raw_data = self.send_request(internal_state)
-        response = response_raw_data['response']
-        raw_data = response_raw_data['raw_data']
-        # Update the search result with the raw data
-        internal_state.search_result.raw_data = raw_data
-        internal_state.search_result.response = response
-        self.print_func("  Search successful!")
-
-        # Check if there's an error in the results
-        if isinstance(raw_data, dict) and "error" in raw_data:
-            error_msg = raw_data["error"]
-            self.print_func(f"{self.__class__.__name__} Search failed: {error_msg}")
-            # Update the existing TrendSearchErrorStatus object using the property
-            current_error_status = internal_state.search_error
-            current_error_status.error = error_msg
-            current_error_status.error_type = "APIError"
-            current_error_status.is_error = True
-            raise Exception(error_msg)
-        
-        # Update success status in the existing TrendSearchErrorStatus object using the property
-        current_error_status = self.search_error
-        current_error_status.is_error = False
-        
-        # Print success message
-        self.print_func(f"{self.__class__.__name__} request sent successfully!")
+        internal_state = self._setup_search(search_spec, **kwargs)
+        self._initialize_history([internal_state])
+        internal_state = self._do_search(internal_state)
+        return self
+    
+    def search_batch(
+        self,
+        search_spec_list: List[SearchSpec],
+        method: str = 'sequential',
+        max_workers: int = 10
+    ) -> 'API_Call':
+        # internal_state_list = self._setup_search(search_spec_list) no this won't work
+        # self._initialize_history(internal_state_list)
         return self
 
 
-    def setup_search(
+    def _setup_search(
         self,
         search_spec: Optional[SearchSpec] = None,
         **kwargs
@@ -375,56 +345,127 @@ class API_Call:
 
         # Set up our internal storage object
         # search_spec = search_spec we already have this
-        search_result = TrendSearchResult(search_spec=search_spec, converter=self.raw_data_converter)
-        search_error = TrendSearchErrorStatus(search_spec=search_spec)
-        internal_state = TrendSearchInternalState(search_spec=search_spec, search_result=search_result, search_error=search_error) 
-        self.initialize_history(search_spec, search_result, search_error, internal_state)
-        
+        internal_state = self._initialize_state(search_spec) # just do one in this case. the list will be used when we are doing any kind of batch search.
+        # What we just did: made all 4 different objects we need for one search, and stored them all inside the state.
+        # Now we have the one single current internal state object that manages the rest of the search.
+        # The idea is that this search method should be atomic and thread-safe, 
+        # but we also have the ability to do batch searches.
+
         self.print_func(f"Search spec: {search_spec}")
         self.print_func(f"  Search term: {search_spec.term_string}")
         self.print_func(f"  Search date range: {search_spec.str.search_range_ymd}")
     
         # Make the base trends request
+        internal_state.base_trends_request_params = self._base_trends_request_params(internal_state)
         internal_state.base_trends_request = self._base_trends_request(internal_state)
         internal_state.prepared_base_trends_request = internal_state.base_trends_request.prepare()
         internal_state.base_trends_request_url = internal_state.prepared_base_trends_request.url
         self.print_func(f"Base trends request URL: {internal_state.base_trends_request_url}")
 
-        # We may not have an API endpoint, in which case we're not going to do the requests
-        if self.api_endpoint is None:
-            return internal_state # that's it, we're not going to do the requests if we don't have an endpoint
+        # Only do the API request if we have an API endpoint
+        if self.api_endpoint is not None:
+            # Set up the API request
+            internal_state.request_headers = self._request_headers(internal_state)
+            self.print_func(f"Request headers: {internal_state.request_headers}")
 
-        # Set up the API request
-        internal_state.request_headers = self._request_headers(internal_state)
-        self.print_func(f"Request headers: {internal_state.request_headers}")
+            internal_state.request_params = self._request_params(internal_state)
+            self.print_func(f"Search params: {internal_state.request_params}")
+            
+            internal_state.request_data = self._request_data(internal_state)
+            self.print_func(f"Request data: {internal_state.request_data}")
 
-        internal_state.request_params = self._request_params(internal_state)
-        self.print_func(f"Search params: {internal_state.request_params}")
-        
-        internal_state.request_data = self._request_data(internal_state)
-        self.print_func(f"Request data: {internal_state.request_data}")
-
-        # Prepare the request
-        internal_state.request = self._request(internal_state)
-        internal_state.prepared_request = internal_state.request.prepare()
-        internal_state.request_url = internal_state.prepared_request.url
-        self.print_func(f"API request URL: {internal_state.request_url}")
+            # Prepare the request
+            internal_state.request = self._request(internal_state)
+            internal_state.prepared_request = internal_state.request.prepare()
+            internal_state.request_url = internal_state.prepared_request.url
+            self.print_func(f"API request URL: {internal_state.request_url}")
 
         return internal_state 
 
-    def initialize_history(self, search_spec: SearchSpec, search_result: TrendSearchResult, search_error: TrendSearchErrorStatus, internal_state: TrendSearchInternalState) -> None:
+
+    def _do_search(
+        self,
+        internal_state: TrendSearchInternalState
+    ) -> 'API_Call':
+        """
+        Search Google Trends using the API.
+        
+        Args:
+            internal_state (TrendSearchInternalState): The internal state containing search configuration
+            
+        Returns:
+            API_Call: Returns self for method chaining. The raw data is stored in self.raw_data
+        """
+
+        if self.__class__.__name__ == "API_Call":
+            print(f"Base class {self.__class__.__name__} prepares a request directly to Google Trends.")
+            print("We are about to send the request, but it is unlikely this will be useful in any way.")
+            print("Google Trends URL:")
+            print(internal_state.base_trends_request_url)
+
+        # Make the request
+        response_raw_data = self.send_request(internal_state)
+        response = response_raw_data['response']
+        raw_data = response_raw_data['raw_data']
+        # Update the search result with the raw data
+        internal_state.search_result.raw_data = raw_data
+        internal_state.search_result.response = response
+        self.print_func("  Search successful!")
+
+        # Check if there's an error in the results
+        if isinstance(raw_data, dict) and "error" in raw_data:
+            error_msg = raw_data["error"]
+            self.print_func(f"{self.__class__.__name__} Search failed: {error_msg}")
+            # Update the existing TrendSearchErrorStatus object using the property
+            current_error_status = internal_state.search_error
+            current_error_status.error = error_msg
+            current_error_status.error_type = "APIError"
+            current_error_status.is_error = True
+            raise Exception(error_msg)
+        
+        # Update success status in the existing TrendSearchErrorStatus object using the property
+        current_error_status = internal_state.search_error
+        current_error_status.is_error = False
+        
+        # Print success message
+        self.print_func(f"{self.__class__.__name__} request sent successfully!")
+        return self
+
+
+    def _initialize_state(self, search_spec: SearchSpec) -> TrendSearchInternalState:
+        """
+        Initialize the collection of state objects for a single search
+        and encapsulate them in a single internal state object.
+        """
+        search_result = TrendSearchResult(search_spec=search_spec, converter=self.raw_data_converter)
+        search_error = TrendSearchErrorStatus(search_spec=search_spec)
+        internal_state = TrendSearchInternalState(search_spec=search_spec, search_result=search_result, search_error=search_error)
+        return internal_state
+    
+    
+    def _initialize_history(self, state_list: List[TrendSearchInternalState]) -> None:
         """
         Initialize the history objects
         """
-        with self._history_lock:
-            self._search_spec_history.append(search_spec)
-            self._search_result_history.append(search_result)
-            self._search_error_history.append(search_error)
-            self._internal_state_history.append(internal_state)
+        spec_list = []
+        result_list = []
+        error_list = []
+        for state in state_list:
+            spec_list.append(state.search_spec)
+            result_list.append(state.search_result)
+            error_list.append(state.search_error)
 
-    def _base_trends_request(self, internal_state: TrendSearchInternalState) -> requests.Request:
+        with self._history_lock:
+            self._search_spec_history.extend(spec_list)
+            self._search_result_history.extend(result_list)
+            self._search_error_history.extend(error_list)
+            self._internal_state_history.extend(state_list)
+        
+        return
+
+    def _base_trends_request_params(self, internal_state: TrendSearchInternalState) -> Dict[str, Any]:
         """
-        Construct the base request URL for Google Trends
+        Construct the base request parameters for Google Trends
         """
         params = {
             'q': internal_state.search_spec.term_string,
@@ -440,6 +481,13 @@ class API_Call:
             params['cat'] = self.cat
         if self.language:
             params['hl'] = self.language
+        return params
+
+    def _base_trends_request(self, internal_state: TrendSearchInternalState) -> requests.Request:
+        """
+        Construct the base request for Google Trends
+        """
+        params = internal_state.base_trends_request_params
         req = requests.Request('GET', self.base_trends_endpoint, params=params)
         return req
 
@@ -493,7 +541,7 @@ class API_Call:
         )
         return req
 
-    def send_request(self, internal_state: TrendSearchInternalState) -> None:
+    def send_request(self, internal_state: TrendSearchInternalState) -> Dict[str, Any]:
         """
         Make the request to the API
         """
@@ -738,27 +786,36 @@ class API_Call:
 
 
     
-    def copy(self) -> 'API_Call':
-        """
-        Create a copy of this API instance with the same initialization parameters.
+    # def copy(self) -> 'API_Call':
+    #     """
+    #     Create a copy of this API instance with the same initialization parameters.
+    #     This was a temporary hack to allow for thread-local storage of the API instance.
+    #     It is now replaced by the TrendSearchInternalState system.
         
-        Returns:
-            API_Call: A new instance of the same class with identical configuration
-        """
-        # Get the constructor signature
-        sig = inspect.signature(self.__class__.__init__)
+    #     Returns:
+    #         API_Call: A new instance of the same class with identical configuration
+    #     """
+    #     # Get the constructor signature
+    #     sig = inspect.signature(self.__class__.__init__)
         
-        # Build kwargs dict with all parameters
-        kwargs = {}
-        for param_name, param in sig.parameters.items():
-            if param_name == 'self':
-                continue  # Skip self parameter
-            if hasattr(self, param_name):
-                kwargs[param_name] = getattr(self, param_name)
+    #     # Build kwargs dict with all parameters
+    #     kwargs = {}
+    #     for param_name, param in sig.parameters.items():
+    #         if param_name == 'self':
+    #             continue  # Skip self parameter
+    #         if hasattr(self, param_name):
+    #             kwargs[param_name] = getattr(self, param_name)
         
-        # Create new instance
-        return type(self)(**kwargs)
+    #     # Create new instance
+    #     return type(self)(**kwargs)
     
+    def search_batch_sequential(self, spec_list: List[SearchSpec]) -> Tuple[List[TrendSearchResult], List[TrendSearchErrorStatus]]:
+        """
+        Execute multiple searches sequentially.
+        """
+        return self.search_threaded_batch(spec_list, max_workers=1)
+
+
     def search_threaded_batch(self, spec_list: List[SearchSpec], max_workers: int = 10) -> List[TrendSearchResult]:
         """
         Execute multiple searches asynchronously using threads.

@@ -207,18 +207,23 @@ class ApplescriptSafari(API_Call):
         self.poll_wait_time = poll_wait_time
 
 
-    def search(self, **kwargs) -> 'ApplescriptSafari':
-        """
-        Search Google Trends using AppleScript and Safari.
+    # def search(self, **kwargs) -> 'ApplescriptSafari':
+    #     """
+    #     Search Google Trends using AppleScript and Safari.
         
-        Args:
-            **kwargs: Arguments passed to the parent class search method
+    #     Args:
+    #         **kwargs: Arguments passed to the parent class search method
             
-        Returns:
-            ApplescriptSafari: Returns self for method chaining
-        """
-        # Set up search parameters using base class logic
-        internal_state = self.setup_search(**kwargs)
+    #     Returns:
+    #         ApplescriptSafari: Returns self for method chaining
+    #     """
+    #     # Set up search parameters using base class logic
+    #     internal_state = self._setup_search(**kwargs)
+    #     # Initialize history with the internal state
+    #     self._initialize_history([internal_state])
+
+
+    def _do_search(self, internal_state: TrendSearchInternalState) -> 'ApplescriptSafari':
         # Get the processed search spec for dates
         spec = internal_state.search_spec
         
