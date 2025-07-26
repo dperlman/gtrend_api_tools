@@ -1,19 +1,19 @@
 import pytest
 from datetime import datetime, timezone
+from gtrend_api_tools.APIs.batch import TrendSearchBatch
 from gtrend_api_tools.search_specs import SearchSpec
 
 # Configure which API to test - change this to test different APIs
-API_TO_TEST = 'serpapi'
-BATCH_METHOD = "thread"  # options are 'thread' or 'sequential'
-MAX_WORKERS = 3
+API_TO_TEST = 'scrapingdog'
+ITERATE_METHOD = "async_internal_thread"
 
 @pytest.mark.parametrize('api_key,api_instance', [(API_TO_TEST, API_TO_TEST)], indirect=True)
-def test_execute_batch(api_instance, test_terms, test_dates):
+def test_execute_iterate(api_instance, test_terms, test_dates):
     """
-    Test the batch execution using the search_batch method.
+    Test the batch execution using the iterate method.
     
     Creates a batch of three searches with different terms and date ranges,
-    executes them using the specified method, and verifies the results.
+    executes them sequentially, and verifies the results.
     """
     # Create a main search specification as a template
     main_spec = SearchSpec(
@@ -48,16 +48,20 @@ def test_execute_batch(api_instance, test_terms, test_dates):
         )
     ]
     
-    # Execute the batch using the API's search_batch method
-    api_instance.search_batch(
-        search_spec_list=spec_list,
-        method=BATCH_METHOD,
-        max_workers=MAX_WORKERS
+    # Create the batch processor
+    batch = TrendSearchBatch(
+        main_spec=main_spec,
+        spec_list=spec_list,
+        method=ITERATE_METHOD # options are iterate, async_internal_thread, async_poll, async_webhook
     )
     
-    # Get results from the API's history
-    results = api_instance.search_result_history
-    errors = api_instance.search_error_history
+    # Execute the batch
+    batch.execute(api_instance)
+    
+    # Verify the results
+    results = batch.get_results()
+    errors = batch.get_errors()
+    progress = batch.get_progress()
     
     # Check that we got exactly 3 results (one for each search)
     assert len(results) == 3, f"Expected 3 results, got {len(results)}"
@@ -65,15 +69,10 @@ def test_execute_batch(api_instance, test_terms, test_dates):
     # Check that there were no errors
     assert len(errors) == 3 and all((not error) for error in errors), f"Expected 0 errors, got {sum(bool(error) for error in errors)}: {errors}"
     
-    # Calculate progress
-    completed = sum(1 for error in errors if not error)
-    total = len(spec_list)
-    percentage = (completed / total) * 100.0 if total > 0 else 0.0
-    
     # Check progress
-    assert completed == 3, f"Expected 3 completed, got {completed}"
-    assert total == 3, f"Expected 3 total, got {total}"
-    assert percentage == 100.0, f"Expected 100% completion, got {percentage}%"
+    assert progress['completed'] == 3, f"Expected 3 completed, got {progress['completed']}"
+    assert progress['total'] == 3, f"Expected 3 total, got {progress['total']}"
+    assert progress['percentage'] == 100.0, f"Expected 100% completion, got {progress['percentage']}%"
     
     # Verify each result has the expected structure
     for i, result in enumerate(results):
@@ -109,5 +108,5 @@ def test_execute_batch(api_instance, test_terms, test_dates):
            results[0].search_spec.end_dt != results[1].search_spec.end_dt, \
         "First two results should have different date ranges"
     
-    print(f"✅ Batch test completed successfully with {completed} results and {sum(bool(e) for e in errors)} errors")
-    print(f"   Progress: {completed}/{total} ({percentage:.1f}%)") 
+    print(f"✅ Batch test completed successfully with {sum(bool(r) for r in results)} results and {sum(bool(e) for e in errors)} errors")
+    print(f"   Progress: {progress['completed']}/{progress['total']} ({progress['percentage']:.1f}%)") 
