@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 from typing import Union, List, Optional, Dict, Any
 import pandas as pd
 from gtrend_api_tools.granularity import GranularityManager
-from gtrend_api_tools.APIs.base_classes import API_Call
+from gtrend_api_tools.APIs.base_classes import API_Call, TrendSearchInternalState, TrendSearchResult
 from gtrend_api_tools.APIs.api_utils import sinc_data
 from gtrend_api_tools.date_strings import cleanup_date_str
 import numpy as np
@@ -51,12 +51,12 @@ class DummyApi(API_Call):
         )
         self.fill_value = fill_value
 
-    def make_request(self) -> None:
+    def send_request(self, internal_state: TrendSearchInternalState) -> TrendSearchResult:
         """
-        Override make_request to generate dummy data instead of making HTTP requests.
+        Override send_request to generate dummy data instead of making HTTP requests.
         """
         # Get the processed search spec for dates
-        spec = self.search_spec
+        spec = internal_state.search_spec
             
         # Number of periods we need to generate data for
         periods = spec.num_periods
@@ -122,20 +122,10 @@ class DummyApi(API_Call):
                 }
                 data.append(entry)
         
-        # Create TrendSearchResult with the generated data and DataFrame
-        from gtrend_api_tools.APIs.base_classes import TrendSearchResult
-        
-        self.search_result = TrendSearchResult(
-            raw_data=data,
-            search_spec=self.search_spec,
-            converter=self.raw_data_converter,  # Use the base class converter
-            data=data,  # Pre-computed standardized data
-            dataframe=df  # Pre-computed DataFrame
-        )
-        
         self.print_func("  Dummy data generated successfully!")
+        return {'response': None, 'raw_data': data}
     
-    # Overriding the default method for creating the dataframe to do nothing (pass) as instructed.
-    def make_dataframe(self):
-        pass
+    # # Overriding the default method for creating the dataframe to do nothing (pass) as instructed.
+    # def make_dataframe(self):
+    #     pass
     

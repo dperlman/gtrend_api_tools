@@ -5,7 +5,7 @@ from typing import Union, List, Optional, Dict, Any
 import pandas as pd
 import unicodedata
 from gtrend_api_tools.search_specs import DateRange
-from gtrend_api_tools.APIs.base_classes import API_Call
+from gtrend_api_tools.APIs.base_classes import API_Call, TrendSearchInternalState
 from gtrend_api_tools.date_strings import cleanup_date_str, standardize_date_range_start
 
 class Scrapingdog(API_Call):
@@ -26,11 +26,11 @@ class Scrapingdog(API_Call):
         super().__init__(api_key=api_key, api_endpoint=api_endpoint, **kwargs)
 
                 
-    def _request_params(self) -> Dict[str, Any]:
+    def _request_params(self, internal_state: TrendSearchInternalState) -> Dict[str, Any]:
         # Set up the request parameters
         params = {
-            'query': self.search_spec.term_string,
-            'date': self.search_spec.str.search_range_ymd,
+            'query': internal_state.search_spec.term_string,
+            'date': internal_state.search_spec.str.search_range_ymd,
             'api_key': self.api_key,
             'data_type': 'TIMESERIES'
         }
@@ -92,14 +92,14 @@ class Scrapingdog(API_Call):
         self.print_func(f"Standardized data length: {len(data)}")
         return data
 
-    def standardize_data(self) -> 'SearchApi':
-        """
-        Standardize the raw data into a common format.
-        This method is kept for backward compatibility but now uses the TrendSearchResult system.
+    # def standardize_data(self) -> 'Scrapingdog':
+    #     """
+    #     Standardize the raw data into a common format.
+    #     This method is kept for backward compatibility but now uses the TrendSearchResult system.
         
-        Returns:
-            SearchApi: Returns self for method chaining
-        """
-        # The standardization now happens automatically through the TrendSearchResult system
-        # This method is kept for backward compatibility but doesn't need to do anything
-        return self
+    #     Returns:
+    #         Scrapingdog: Returns self for method chaining
+    #     """
+    #     # The standardization now happens automatically through the TrendSearchResult system
+    #     # This method is kept for backward compatibility but doesn't need to do anything
+    #     return self

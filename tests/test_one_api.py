@@ -2,7 +2,7 @@ import pytest
 from datetime import datetime, timezone
 from dateparser import parse
 
-API_TO_TEST = 'scrapingdog'
+API_TO_TEST = 'searchapi'
 
 @pytest.mark.parametrize('api_key,api_instance', [(API_TO_TEST, API_TO_TEST)], indirect=True)
 def test_api_search_history(api_instance, test_terms, test_dates):
@@ -11,15 +11,27 @@ def test_api_search_history(api_instance, test_terms, test_dates):
     end_1 = test_dates['short_range']['end']
     start_2 = test_dates['medium_range']['start']
     end_2 = test_dates['medium_range']['end']
+    start_3 = test_dates['long_range']['start']
+    end_3 = test_dates['long_range']['end']
 
     # First search
     api_instance.search(search_term=test_terms['term1'], start=start_1, end=end_1)
+    # print(f"api_instance.search_spec_history: {api_instance.search_spec_history}")
+    # print(f"api_instance.internal_state_history: {api_instance.internal_state_history}")
+    # print(f"api_instance.search_result_history: {api_instance.search_result_history}")
+    # print(f"api_instance.search_error_history: {api_instance.search_error_history}")
+
     assert api_instance.data
     assert len(api_instance.data) > 1
-    assert len(api_instance.search_history) == 1
-    assert api_instance.search_history[0].terms == [test_terms['term1']]
+    assert len(api_instance.search_spec_history) == 1
+    assert len(api_instance.internal_state_history) == 1
     assert len(api_instance.search_result_history) == 1
+    assert len(api_instance.search_error_history) == 1
+    assert api_instance.search_spec_history[0].terms == [test_terms['term1']]
     assert api_instance.search_result_history[0].search_spec.terms == [test_terms['term1']]
+    assert api_instance.internal_state_history[0].search_spec.terms == [test_terms['term1']]
+    assert not api_instance.search_error_history[0]
+
 
     # Check DataFrame conversion for first search
     assert not api_instance.dataframe.empty
@@ -29,23 +41,31 @@ def test_api_search_history(api_instance, test_terms, test_dates):
     api_instance.search(search_term=test_terms['term2'], start=start_2, end=end_2)
     assert api_instance.data
     assert len(api_instance.data) > 1
-    assert len(api_instance.search_history) == 2
-    assert api_instance.search_history[1].terms == [test_terms['term2']]
+    assert len(api_instance.search_spec_history) == 2
+    assert len(api_instance.internal_state_history) == 2
     assert len(api_instance.search_result_history) == 2
+    assert len(api_instance.search_error_history) == 2
+    assert api_instance.search_spec_history[1].terms == [test_terms['term2']]
     assert api_instance.search_result_history[1].search_spec.terms == [test_terms['term2']]
+    assert api_instance.internal_state_history[1].search_spec.terms == [test_terms['term2']]
+    assert not api_instance.search_error_history[1]
     
     # Check DataFrame conversion for second search
     assert not api_instance.dataframe.empty
     assert test_terms['term2'].replace(' ', '_').lower() in api_instance.dataframe.columns
 
     # Third search
-    api_instance.search(search_term=test_terms['term3'], start=start_2, end=end_2)
+    api_instance.search(search_term=test_terms['term3'], start=start_3, end=end_3)
     assert api_instance.data
     assert len(api_instance.data) > 1
-    assert len(api_instance.search_history) == 3
-    assert api_instance.search_history[2].terms == [test_terms['term3']]
+    assert len(api_instance.search_spec_history) == 3
+    assert len(api_instance.internal_state_history) == 3
     assert len(api_instance.search_result_history) == 3
+    assert len(api_instance.search_error_history) == 3
+    assert api_instance.search_spec_history[2].terms == [test_terms['term3']]
     assert api_instance.search_result_history[2].search_spec.terms == [test_terms['term3']]
+    assert api_instance.internal_state_history[2].search_spec.terms == [test_terms['term3']]
+    assert not api_instance.search_error_history[2]
     
     # Check DataFrame conversion for third search
     assert not api_instance.dataframe.empty

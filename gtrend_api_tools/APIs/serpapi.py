@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Union, List, Optional, Dict, Any
 import pandas as pd
 import unicodedata
-from gtrend_api_tools.APIs.base_classes import API_Call
+from gtrend_api_tools.APIs.base_classes import API_Call, TrendSearchInternalState
 from gtrend_api_tools.search_specs import SearchSpec, DateRange
 from gtrend_api_tools.date_strings import cleanup_date_str, standardize_date_range_start
 
@@ -26,11 +26,11 @@ class SerpApi(API_Call):
         super().__init__(api_key=api_key, api_endpoint=api_endpoint, **kwargs)
 
 
-    def _request_params(self) -> Dict[str, Any]:
+    def _request_params(self, internal_state: TrendSearchInternalState) -> Dict[str, Any]:
         # Set up the request parameters
         params = {
-            'q': self.search_spec.term_string,
-            'date': self.search_spec.str.search_range_ymd,
+            'q': internal_state.search_spec.term_string,
+            'date': internal_state.search_spec.str.search_range_ymd,
             'api_key': self.api_key,
             'engine': 'google_trends'
         }
@@ -92,30 +92,14 @@ class SerpApi(API_Call):
         self.print_func(f"Standardized data length: {len(data)}")
         return data
 
-    def standardize_data(self) -> 'SerpApi':
-        """
-        Standardize the raw data into a common format.
-        This method is kept for backward compatibility but now uses the TrendSearchResult system.
+    # def standardize_data(self) -> 'SerpApi':
+    #     """
+    #     Standardize the raw data into a common format.
+    #     This method is kept for backward compatibility but now uses the TrendSearchResult system.
         
-        Returns:
-            SerpApi: Returns self for method chaining
-        """
-        # The standardization now happens automatically through the TrendSearchResult system
-        # This method is kept for backward compatibility but doesn't need to do anything
-        return self
-
-# def search_serpapi(
-#     **kwargs
-# ) -> Union[pd.DataFrame, Dict[str, Any]]:
-#     """
-#     Search Google Trends using the SerpAPI library.
-    
-#     Args:
-#         **kwargs: Arguments passed to the parent class search method
-#         **kwargs: Additional keyword arguments passed to API_Call
-        
-#     Returns:
-#         Union[pd.DataFrame, Dict[str, Any]]: Standardized search results
-#     """
-#     serp = SerpApi(**locals())
-#     return serp.search(**kwargs).standardize_data().data 
+    #     Returns:
+    #         SerpApi: Returns self for method chaining
+    #     """
+    #     # The standardization now happens automatically through the TrendSearchResult system
+    #     # This method is kept for backward compatibility but doesn't need to do anything
+    #     return self

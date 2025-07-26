@@ -42,8 +42,8 @@ def test_execute_iterate(api_instance, test_terms, test_dates):
         # Third spec: different term, different date range
         SearchSpec(
             search_term=test_terms['term3'],
-            start=test_dates['medium_range']['start'],
-            end=test_dates['medium_range']['end'],
+            start=test_dates['long_range']['start'],
+            end=test_dates['long_range']['end'],
             api=API_TO_TEST
         )
     ]
@@ -90,6 +90,7 @@ def test_execute_iterate(api_instance, test_terms, test_dates):
         # Check that we have data
         assert result.data is not None, f"Result {i} has no data"
         assert len(result.data) > 0, f"Result {i} has empty data"
+        assert len(result.data) > 6, f"Result {i} has too little data: {len(result.data)}"
         
         # Check that we can get a DataFrame
         df = result.dataframe

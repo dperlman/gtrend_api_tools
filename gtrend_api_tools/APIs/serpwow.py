@@ -2,8 +2,8 @@ import time
 import requests
 from datetime import datetime, timedelta
 from typing import Union, List, Optional, Dict, Any
-from gtrend_api_tools.search_specs import DateRange
-from gtrend_api_tools.APIs.base_classes import API_Call
+from gtrend_api_tools.search_specs import DateRange, SearchSpec
+from gtrend_api_tools.APIs.base_classes import API_Call, TrendSearchInternalState
 from gtrend_api_tools.date_strings import cleanup_date_str, standardize_date_range_start
 import pandas as pd
 
@@ -24,15 +24,15 @@ class Serpwow(API_Call):
         """
         super().__init__(api_key=api_key, api_endpoint=api_endpoint, **kwargs)
     
-    def _request_params(self) -> Dict[str, Any]:
+    def _request_params(self, internal_state: TrendSearchInternalState) -> Dict[str, Any]:
         # Set up the request parameters
         params = {
-            'q': self.search_spec.term_string,
+            'q': internal_state.search_spec.term_string,
             'api_key': self.api_key,
             'data_type': 'INTEREST_OVER_TIME',
             'time_period': 'custom',
-            'time_period_min': self.search_spec.str.search_start_mdy,
-            'time_period_max': self.search_spec.str.search_end_mdy,
+            'time_period_min': internal_state.search_spec.str.search_start_mdy,
+            'time_period_max': internal_state.search_spec.str.search_end_mdy,
             'engine': 'google',
             'search_type': 'trends'
         }
@@ -94,31 +94,14 @@ class Serpwow(API_Call):
         self.print_func(f"Standardized data length: {len(data)}")
         return data
 
-    def standardize_data(self) -> 'Serpwow':
-        """
-        Standardize the raw data into a common format.
-        This method is kept for backward compatibility but now uses the TrendSearchResult system.
+    # def standardize_data(self) -> 'Serpwow':
+    #     """
+    #     Standardize the raw data into a common format.
+    #     This method is kept for backward compatibility but now uses the TrendSearchResult system.
         
-        Returns:
-            Serpwow: Returns self for method chaining
-        """
-        # The standardization now happens automatically through the TrendSearchResult system
-        # This method is kept for backward compatibility but doesn't need to do anything
-        return self
-
-# def search_serpwow(**kwargs) -> Union[pd.DataFrame, Dict[str, Any]]:
-#     """
-#     Search Google Trends using the Serpwow API.
-    
-#     Args:
-#         search_term (Union[str, List[str]]): The search term(s) to look up in Google Trends
-#         start_date (Optional[Union[str, datetime]]): Start date for the search
-#         end_date (Optional[Union[str, datetime]]): End date for the search
-#         api_key (Optional[str]): The Serpwow API key. If None, will try to get from environment variable SERPWOW_API_KEY
-#         **kwargs: Additional keyword arguments passed to API_Call
-        
-#     Returns:
-#         Union[pd.DataFrame, Dict[str, Any]]: Standardized search results
-#     """
-#     serp = Serpwow(**locals())
-#     return serp.search(**kwargs).standardize_data().data 
+    #     Returns:
+    #         Serpwow: Returns self for method chaining
+    #     """
+    #     # The standardization now happens automatically through the TrendSearchResult system
+    #     # This method is kept for backward compatibility but doesn't need to do anything
+    #     return self

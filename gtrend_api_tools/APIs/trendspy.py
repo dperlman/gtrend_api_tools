@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from typing import Union, List, Optional, Dict, Any
 from gtrend_api_tools.APIs.api_utils import change_tor_identity
 from gtrend_api_tools.search_specs import DateRange
-from gtrend_api_tools.APIs.base_classes import API_Call
+from gtrend_api_tools.APIs.base_classes import API_Call, TrendSearchInternalState
 from gtrend_api_tools.date_strings import cleanup_date_str, standardize_date_range_start
 import pandas as pd
 
@@ -83,41 +83,36 @@ class TrendsPy(API_Call):
         self.print_func(f"  Proxy: {self.proxy or 'None'}")
         self.print_func(f"  Change identity: {self.change_identity}")
         
-        try:
-            # Prepare the parameters for interest_over_time
-            params = {
-                'geo': self.geo,
-                'cat': self.cat if self.cat is not None else 0,  # trendspy expects 0 as default
-                'gprop': self.gprop if self.gprop is not None else ''  # trendspy expects empty string as default
-            }
-            # Parse time range if provided
-            if self.search_spec.start_dt or self.search_spec.end_dt:
-                params['timeframe'] = self.search_spec.str.search_range_ymd
-                self.print_func(f"  Time range: {self.search_spec.str.search_range_ymd}")
-            else:
-                self.print_func("  Time range: default")
-            
-            # If change_identity is True, change the Tor identity before the search
-            if self.change_identity:
-                self.print_func("  Changing Tor identity")
-                change_tor_identity(self.tor_control_password, self.print_func)
-            
-            self.raw_data = self.trends.interest_over_time(self.search_spec.term_string, return_raw=True, **params) # we want raw dicts because we will clean and standardize them all later
-            
-            # Check if there's an error in the results
-            if isinstance(self.raw_data, dict) and "error" in self.raw_data:
-                error_msg = self.raw_data["error"]
-                self.print_func(f"  Search failed: {error_msg}")
-                raise Exception(error_msg)
-            
-            self.print_func("  Search successful!")
-            #self.print_func(self.raw_data)
-            
-            return self
-                    
-        except Exception as e:
-            self.print_func(f"  Search failed: {str(e)}")
-            raise
+        # Prepare the parameters for interest_over_time
+        params = {
+            'geo': self.geo,
+            'cat': self.cat if self.cat is not None else 0,  # trendspy expects 0 as default
+            'gprop': self.gprop if self.gprop is not None else ''  # trendspy expects empty string as default
+        }
+        # Parse time range if provided
+        if self.search_spec.start_dt or self.search_spec.end_dt:
+            params['timeframe'] = self.search_spec.str.search_range_ymd
+            self.print_func(f"  Time range: {self.search_spec.str.search_range_ymd}")
+        else:
+            self.print_func("  Time range: default")
+        
+        # If change_identity is True, change the Tor identity before the search
+        if self.change_identity:
+            self.print_func("  Changing Tor identity")
+            change_tor_identity(self.tor_control_password, self.print_func)
+        
+        self.raw_data = self.trends.interest_over_time(self.search_spec.term_string, return_raw=True, **params) # we want raw dicts because we will clean and standardize them all later
+        
+        # Check if there's an error in the results
+        if isinstance(self.raw_data, dict) and "error" in self.raw_data:
+            error_msg = self.raw_data["error"]
+            self.print_func(f"  Search failed: {error_msg}")
+            raise Exception(error_msg)
+        
+        self.print_func("  Search successful!")
+        #self.print_func(self.raw_data)
+        
+        return self
 
     def standardize_data(self) -> 'TrendsPy':
         """
