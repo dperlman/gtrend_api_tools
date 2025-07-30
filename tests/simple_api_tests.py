@@ -1,7 +1,7 @@
 import os
 import sys
 
-from gtrend_api_tools.APIs import SerpApi, Serpwow, TrendsPy, SearchApi, ApplescriptSafari, DummyApi, Brightdata
+from gtrend_api_tools.APIs import SerpApi, Serpwow, TrendsPy, SearchApi, ApplescriptSafari, DummyApi, Brightdata, Decodo
 from datetime import datetime
 from gtrend_api_tools.utils import load_config, _print_if_verbose
 import json
@@ -104,7 +104,8 @@ def main():
         #{"name": "ApplescriptSafari", "instance": None, "search_term": "coffee,tea"},
         #{"name": "Brightdata", "instance": None, "search_term": "coffee,tea"},
         #{"name": "Scrapingdog", "instance": None, "search_term": "coffee,tea"},
-        {"name": "ApplescriptSafari", "instance": None, "search_term": "car,truck"},
+        {"name": "Decodo", "instance": None, "search_term": "coffee,tea"},
+        #{"name": "ApplescriptSafari", "instance": None, "search_term": "car,truck"},
         #{"name": "TrendsPy", "instance": None, "search_term": "coffee,tea"},
         #{"name": "DummyApi", "instance": None, "search_term": "coffee,tea"}
     ]

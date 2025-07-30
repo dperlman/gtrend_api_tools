@@ -50,16 +50,13 @@ trends = Trends(api="trendspy")
 You can get information about available APIs:
 
 ```python
-from gtrend_api_tools import available_apis, get_free_apis, get_paid_apis
+from gtrend_api_tools import load_config
 
-# Get all available APIs
-all_apis = available_apis()
-
-# Get only free APIs
-free_apis = get_free_apis()
-
-# Get only paid APIs
-paid_apis = get_paid_apis()
+# Load config and get available APIs
+config = load_config()
+all_apis = config.get('available_apis', {})
+free_apis = {name: info for name, info in all_apis.items() if info['type'] == 'free'}
+paid_apis = {name: info for name, info in all_apis.items() if info['type'] == 'paid'}
 ```
 
 ## API Configuration

@@ -7,7 +7,22 @@ from typing import Union, List, Dict, Any, Optional
 from types import SimpleNamespace
 from gtrend_api_tools.search_specs import SearchSpec
 from gtrend_api_tools.APIs.base_classes import API_Call, TrendSearchResult
-from gtrend_api_tools.APIs.api_utils import available_apis
+
+
+class CompoundBatch:
+    """
+    A class for executing batch Google Trends searches with different processing methods.
+    
+    This class allows you to execute multiple searches using a main specification
+    and a list of additional specifications, with different execution strategies.
+    """
+    def __init__(
+        self,
+        compound_spec_list: List[List[SearchSpec]],
+        method: str = "simple",
+        max_workers: int = 10
+    ):
+        pass
 
 
 class TrendSearchBatch:

@@ -41,7 +41,6 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional, Union, Dict, Any, List, Tuple
 from dateutil.parser import parse, ParserError
 from gtrend_api_tools.utils import load_config, _print_if_verbose, period_index_range_info, datetime_index_range_info
-from gtrend_api_tools.APIs.api_utils import available_apis
 from gtrend_api_tools.date_strings import parse_date_str, split_date_range_str, cleanup_date_str, get_resolution_details # parse_date_str is a wrapper for dateutil.parser.parse where we set the default the way we want it
 from gtrend_api_tools.granularity import GranularityManager
 import pandas as pd
@@ -133,6 +132,12 @@ class DateRange:
         If range_str is provided, it must be a valid date range string.
         If start and end are provided, they must be valid date strings or datetime objects.
         """
+        if range_str is not None and type(range_str) == str:
+            if start is not None or end is not None:
+                raise ValueError(f"{self.__class__.__name__} does not accept the arguments `start`, and `end` when `range_str` is provided")
+        else:
+            if start is None or end is None:
+                raise ValueError(f"{self.__class__.__name__} requires the arguments `start` and `end` when `range_str` is not provided")
         # If we got a range_str, parse it into start_date and end_date.
         # This takes precedence over start_date and end_date.
         parse_errors = ''
@@ -249,6 +254,8 @@ class DateRange:
     def _apply_resolution(self) -> None:
         """
         Apply the resolution to the start and end dates.
+        Note that there are additional range strings that are specific to Google Trends.
+        Those aren't in here, those are in the GtrendDateRange subclass.
         NOTE AND TODO: When we change self.start_dt and self.end_dt here, does it change what the PeriodIndex would be?
         """
         res_args, format_str_ymd, format_str_mdy = get_resolution_details(self.resolution)
@@ -310,10 +317,6 @@ class GtrendDateRange(DateRange):
             raise ValueError(f"{self.__class__.__name__} does not accept the argument `freq`")
         if 'resolution' in kwargs:
             raise ValueError(f"{self.__class__.__name__} does not accept the argument `resolution`")
-        if 'start' not in kwargs or kwargs['start'] is None:
-            raise ValueError(f"{self.__class__.__name__} requires the argument `start`")
-        if 'end' not in kwargs or kwargs['end'] is None:
-            raise ValueError(f"{self.__class__.__name__} requires the argument `end`")
         # OK that's all. just go ahead with the initialization.
         # Additional parameters that are specific to GtrendDateRange
         # If gtrend_params is not provided, set it to an empty dictionary
@@ -367,6 +370,7 @@ class GtrendDateRange(DateRange):
         """
         Apply the resolution to the start and end dates.
         Extends the base class method to also make a search_resolution version of the start and end dates.
+        Note these aren't available in the base class DateRange because they are specific to Google Trends.
         """
         # First do it the original way
         super()._apply_resolution()
@@ -508,6 +512,7 @@ class SearchSpec(GtrendDateRange):
         self.config = load_config()
         # Check if api is provided and validate it against allowed APIs in config
         _print_if_verbose(f"SearchSpec(api={self.api}) initializing search spec")
+        available_apis = self.config.get('available_apis', {})
         if self.api is not None and self.api not in available_apis:
             raise ValueError(f"API '{self.api}' is not allowed. Allowed APIs are: {available_apis.keys()}")
         

@@ -13,11 +13,12 @@ from .utils import (
 )
 from .date_strings import parse_date_str, split_date_range_str, cleanup_date_str
 from .search_specs import DateRange, SearchSpec
-from .APIs import (
-    available_apis,
-    get_free_apis,
-    get_paid_apis,
-    get_api_info
+from .api_utils import (
+    get_api_class,
+    api_string,
+    change_tor_identity,
+    standard_dict_to_df,
+    sinc_data
 )
 
 __all__ = [
@@ -28,8 +29,9 @@ __all__ = [
     'period_index_range_info',
     'DateRange',
     'SearchSpec',
-    'available_apis',
-    'get_free_apis',
-    'get_paid_apis',
-    'get_api_info'
+    'get_api_class',
+    'api_string',
+    'change_tor_identity',
+    'standard_dict_to_df',
+    'sinc_data'
 ]

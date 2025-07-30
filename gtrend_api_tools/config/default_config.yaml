@@ -4,6 +4,7 @@ api_keys:
   searchapi: "my_searchapi_key"
   brightdata: "my_brightdata_key"
   scrapingdog: "my_scrapingdog_key"
+  decodo: "my_decodo_key"
 
 tor:
   control_password: "controlpass" 
@@ -14,6 +15,90 @@ api_parameters:
   all:
     max_terms: 5
 
+available_apis:
+  trendspy:
+    class: TrendsPy
+    type: free
+    async: false
+    default_concurrency: 1 # this is not an api so no concurrency is possible
+    hourly_limit: 0 # it can return data as fast as you can hit it, which is not very fast at all. If you want to slow it down to avoid rate limits, that's a good idea but it's not covered by this parameter.
+    description: Uses trendspy library for Google Trends data
+
+  serpapi:
+    class: SerpApi
+    type: paid
+    async: true
+    default_concurrency: 100 # no native concurrency limit but we limit it to 100
+    hourly_limit: 0 # 1000 per hour for the lowest tier paid plan.
+    description: Uses SerpAPI service with direct HTTP requests
+
+  brightdata:
+    class: Brightdata
+    type: paid
+    async: true
+    default_concurrency: 100 # no native concurrency limit but we limit it to 100
+    hourly_limit: 0 # unknown
+    description: Uses Brightdata service
+
+  scrapingdog:
+    class: Scrapingdog
+    type: paid
+    async: false
+    default_concurrency: 5 # limit for free or lite plan. Higher plans have much more.
+    hourly_limit: 0 # unknown
+    description: Uses Scrapingdog service
+
+  decodo:
+    class: Decodo
+    type: paid
+    async: false
+    default_concurrency: 5 # limit for free or lite plan. Higher plans have much more.
+    hourly_limit: 0 # unknown
+    description: Uses Decodo service
+
+  serpwow:
+    class: Serpwow
+    type: paid
+    async: false
+    default_concurrency: 10 # can't find any information on concurrency limits
+    hourly_limit: 0 # unknown
+    description: Uses SerpWow service
+
+  searchapi:
+    class: SearchApi
+    type: paid
+    async: true
+    default_concurrency: 100 # no native concurrency limit but we limit it to 100
+    hourly_limit: 0 # unknown
+    description: Uses SearchAPI service
+
+  applescript_safari:
+    class: ApplescriptSafari
+    type: free
+    async: false
+    default_concurrency: 1 # this is not an api so no concurrency is possible
+    hourly_limit: 0 # unknown
+    description: Uses Safari and AppleScript to access Google Trends
+
+  dummy_api:
+    class: DummyApi
+    type: free  
+    async: false
+    default_concurrency: 10000 # this is entirely internal so no limits are necessary
+    hourly_limit: 0 # unknown
+    description: Generates dummy data for testing and development
+
+  win_uiauto_edge:
+    class: WinUiautoEdge
+    type: free
+    async: false
+    default_concurrency: 1 # this is not an api so no concurrency is possible
+    hourly_limit: 0 # unknown
+    description: Uses Windows UI Automation to access Google Trends via Edge browser (not implemented) 
+    
+
+# I don't think I'm using this part anymore.
+# I think we will use a different approach for batch search strategies.
 api_modes:
   - name: "trendspy"
     description: "trendspy"

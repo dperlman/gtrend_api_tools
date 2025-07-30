@@ -47,7 +47,7 @@ def api_instances_for_comparison(granularity_api_1, granularity_api_2, available
             api_key = None
         
         # Import the API class
-        from gtrend_api_tools.APIs.api_utils import get_api_class
+        from gtrend_api_tools.api_utils import get_api_class
         
         ApiClass = get_api_class(api_name)
         

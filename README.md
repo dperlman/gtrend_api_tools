@@ -38,6 +38,10 @@ results = trends.search(
 ## Documentation
 For detailed documentation, please visit the [docs](docs/README.md) directory.
 
+I need to watch this and incorporate any relevant information:
+https://www.youtube.com/watch?v=pS2f35vQFvc
+
+
 ## Examples
 Check out the [examples](examples/) directory for Jupyter notebooks demonstrating various use cases.
 

@@ -1,4 +1,4 @@
-from gtrend_api_tools.APIs.api_utils import load_api_config, get_api_class_name
+from gtrend_api_tools.api_utils import get_api_class
 from gtrend_api_tools.search_specs import SearchSpec, DateRange
 from gtrend_api_tools.utils import load_config
 from gtrend_api_tools.granularity import GranularityManager
@@ -14,9 +14,8 @@ test_days = [7, 30, 90, 269, 270, 271, 1899, 1900, 1901]
 verbose = False
 
 
-api_config = load_api_config()
 config = load_config()
-api_info = api_config[api_to_test]
+api_info = config.get('available_apis', {}).get(api_to_test)
 
 # Check if the API is paid and retrieve API key if needed
 if api_info.get('type') == 'paid':
@@ -33,7 +32,7 @@ else:
 
 # Import the API class
 module = import_module(f'gtrend_api_tools.APIs.{api_to_test}')
-ApiClass = getattr(module, get_api_class_name(f'{api_to_test}.py'))
+ApiClass = get_api_class(api_to_test)
 
 # Create API instance
 api_instance = ApiClass(api_key=api_key, verbose=verbose)

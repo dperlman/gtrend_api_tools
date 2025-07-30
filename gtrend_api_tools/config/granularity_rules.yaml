@@ -62,11 +62,18 @@ granularity_rules:
     max_records: .inf
     record_seconds: 2419200 # minimum, 28 days. Maximum is 2678400, 31 days.
 
+## Some APIs have different rules for the granularity of their data.
+## In theory, this can only be because of intentional limitations or accidental bugs.
+## We want to be able to transparently use these APIs so we will track all the limitations here.
 api_granularity_overrides:
-  scrapingdog: # There are no overrides for scrapingdog, they are actually doing this right. They are 3 times as fast as searchapi!
-  searchapi: # There are no overrides for searchapi, they are actually doing this right
-  brightdata: # There are no overrides for brightdata, they are actually doing this right. They are VERY slow though. About 9 times longer than searchapi.
-  serpapi:   # serpapi has a hard-coded day limit of 7 for hourly, which is wrong, but this will avoid errors on our searches.
+  # There are no overrides for scrapingdog, they are actually doing this right. They are 3 times as fast as searchapi!
+  scrapingdog:
+  # There are no overrides for searchapi, they are actually doing this right
+  searchapi:
+  # There are no overrides for brightdata, they are actually doing this right. They are VERY slow though. About 9 times slower than searchapi.
+  brightdata:
+  # serpapi has a hard-coded day limit of 7 for hourly. This is a bug. I reported it on their github, which is nice. https://github.com/serpapi/public-roadmap/issues/2918
+  serpapi:
     h:
       name: "hourly"
       freq: "h"
@@ -74,7 +81,9 @@ api_granularity_overrides:
       result_resolution: "h"
       fixed: True
       max_records: 168
-      record_seconds: 3600
+      record_seconds: 3600``
+  # serpwow doesn't allow any resolution finer than daily. I don't know if this is intentional or a bug.
+  # Because there are so many limitations, I haven't bothered to do much speed testing.
   serpwow:
     m:
       name: "one-minute"

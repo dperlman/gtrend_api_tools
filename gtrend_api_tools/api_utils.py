@@ -12,41 +12,8 @@ from gtrend_api_tools.utils import load_config, _print_if_verbose
 from gtrend_api_tools.granularity import GranularityManager
 import numpy as np
 
-def load_api_config() -> Dict[str, Any]:
-    """
-    Load the API configuration from available_apis.yaml in the config directory.
-    
-    Returns:
-        Dict[str, Any]: Dictionary containing API configurations
-        
-    Raises:
-        FileNotFoundError: If available_apis.yaml is not found
-        yaml.YAMLError: If the YAML file is invalid
-    """
-    # Get the package directory (one level up from this file)
-    package_dir = os.path.dirname(os.path.dirname(__file__))
-    config_path = os.path.join(package_dir, 'config', 'available_apis.yaml')
-    with open(config_path, 'r') as f:
-        return yaml.safe_load(f)
 
-# Load API metadata from configuration
-available_apis = load_api_config()
-
-def get_free_apis():
-    """Get dictionary of available free APIs with their metadata"""
-    return {name: info for name, info in available_apis.items() 
-            if info['type'] == 'free'}
-
-def get_paid_apis():
-    """Get dictionary of available paid APIs with their metadata"""
-    return {name: info for name, info in available_apis.items() 
-            if info['type'] == 'paid'}
-
-def get_api_info(name: str):
-    """Get metadata for a specific API"""
-    return available_apis.get(name)
-
-def get_api_class_name(file_name: str) -> Optional[str]:
+def get_api_class_name(file_name: str, config: Optional[Dict[str, Any]] = None) -> Optional[str]:
     """
     Get the class name for an API from its file name using the configuration.
     
@@ -56,15 +23,20 @@ def get_api_class_name(file_name: str) -> Optional[str]:
     Returns:
         Optional[str]: The class name if found, None otherwise
     """
+    if config is None:
+        config = load_config()
+    available_apis = config.get('available_apis', {})
+
     # Remove .py extension
     api_name = file_name.replace('.py', '')
     
     # Look up the API in the config
     if api_name in available_apis:
         return available_apis[api_name]['class']
-    return None
+    else:
+        raise ValueError(f"get_api_class_name: API '{api_name}' not found in configuration")
 
-def get_api_class(api_name: str) -> Any:
+def get_api_class(api_name: str, config: Optional[Dict[str, Any]] = None) -> Any:
     """
     Get an API class from an API name.
     
@@ -79,14 +51,10 @@ def get_api_class(api_name: str) -> Any:
         ImportError: If the API module cannot be imported
         AttributeError: If the API class cannot be found in the module
     """
-    from importlib import import_module
-    
-    # Get the API class name
-    class_name = get_api_class_name(api_name)
-    if not class_name:
-        raise ValueError(f"API '{api_name}' not found in configuration")
+    class_name = get_api_class_name(api_name, config)
     
     # Import the API module
+    from importlib import import_module
     module = import_module(f'gtrend_api_tools.APIs.{api_name}')
     
     # Get the API class
@@ -95,7 +63,7 @@ def get_api_class(api_name: str) -> Any:
     # Create and return the API instance
     return ApiClass
 
-def api_string(api_class_name: str) -> Optional[str]:
+def api_string(api_class_name: str, config: Optional[Dict[str, Any]] = None) -> Optional[str]:
     """
     Get the API string identifier for this class from available_apis configuration.
     
@@ -103,6 +71,9 @@ def api_string(api_class_name: str) -> Optional[str]:
         Optional[str]: The API string (e.g., 'serpapi', 'trendspy') or None if not found
     """
     # Search for the class name in the configuration
+    if config is None:
+        config = load_config()
+    available_apis = config.get('available_apis', {})
     for api_string, api_info in available_apis.items():
         if api_info.get('class') == api_class_name:
             return api_string

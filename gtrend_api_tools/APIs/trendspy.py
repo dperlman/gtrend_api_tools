@@ -2,7 +2,7 @@ import time
 import requests
 from datetime import datetime, timedelta
 from typing import Union, List, Optional, Dict, Any
-from gtrend_api_tools.APIs.api_utils import change_tor_identity
+from gtrend_api_tools.api_utils import change_tor_identity
 from gtrend_api_tools.search_specs import DateRange
 from gtrend_api_tools.APIs.base_classes import API_Call, TrendSearchInternalState
 from gtrend_api_tools.date_strings import cleanup_date_str, standardize_date_range_start

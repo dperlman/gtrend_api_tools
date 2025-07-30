@@ -4,7 +4,7 @@ Simple API granularity tests without pytest - importing test data from search_fi
 from datetime import datetime, timezone 
 from gtrend_api_tools.APIs import SerpApi, Serpwow, TrendsPy, SearchApi, ApplescriptSafari, DummyApi, Brightdata
 from gtrend_api_tools.utils import load_config, _print_if_verbose
-from gtrend_api_tools.APIs.api_utils import load_api_config
+from gtrend_api_tools.api_utils import get_api_class
 import json
 import traceback
 import os, sys
@@ -100,12 +100,11 @@ def main():
     #print(config.get('api_keys', {}))
     # Initialize API instances with appropriate key
     # Get the correct API class by name using our utility function
-    from gtrend_api_tools.APIs.api_utils import get_api_class
     
     api_class = get_api_class(API_TO_TEST)
     
     # Check if API is paid and requires an API key
-    available_apis = load_api_config()
+    available_apis = config.get('available_apis', {})
     if available_apis.get(API_TO_TEST, {}).get('type') == 'paid':
         api_key = config.get('api_keys', {}).get(API_TO_TEST)
         if not api_key:

@@ -2,9 +2,9 @@ import pytest
 from datetime import datetime, timezone
 from dateparser import parse
 
-API_TO_TEST = 'applescript_safari'
+API_TO_TEST = 'dummy_api'
 
-@pytest.mark.parametrize('api_key,api_instance', [(API_TO_TEST, API_TO_TEST)], indirect=True)
+@pytest.mark.parametrize('api_instance', [API_TO_TEST], indirect=True)
 def test_api_search_history(api_instance, test_terms, test_dates):
     """Test that search history is properly maintained."""
     start_1 = test_dates['short_range']['start']
@@ -71,7 +71,7 @@ def test_api_search_history(api_instance, test_terms, test_dates):
     assert not api_instance.dataframe.empty
     assert test_terms['term3'].replace(' ', '_').lower() in api_instance.dataframe.columns
 
-@pytest.mark.parametrize('api_key,api_instance', [(API_TO_TEST, API_TO_TEST)], indirect=True)
+@pytest.mark.parametrize('api_instance', [API_TO_TEST], indirect=True)
 def test_api_single_term(api_instance, test_terms, test_dates):
     """Test API with a single search term."""
     search_term = test_terms['term1']
@@ -95,7 +95,7 @@ def test_api_single_term(api_instance, test_terms, test_dates):
     assert len(api_instance.dataframe.columns) == 1  # One column for the single term
     assert search_term.replace(' ', '_').lower() in api_instance.dataframe.columns
 
-@pytest.mark.parametrize('api_key,api_instance', [(API_TO_TEST, API_TO_TEST)], indirect=True)
+@pytest.mark.parametrize('api_instance', [API_TO_TEST], indirect=True)
 def test_api_multiple_terms(api_instance, test_terms, test_dates):
     """Test API with multiple search terms."""
     search_term = [test_terms['term1'], test_terms['term2'], test_terms['term3']]
@@ -122,7 +122,7 @@ def test_api_multiple_terms(api_instance, test_terms, test_dates):
     sanitized_terms = [term.replace(' ', '_').lower() for term in search_term]
     assert all(term in api_instance.dataframe.columns for term in sanitized_terms)
 
-@pytest.mark.parametrize('api_key,api_instance', [(API_TO_TEST, API_TO_TEST)], indirect=True)
+@pytest.mark.parametrize('api_instance', [API_TO_TEST], indirect=True)
 def test_api_datetime_input(api_instance, test_terms, test_dates):
     """Test API with datetime objects as input."""
     search_term = test_terms['term1']
@@ -164,7 +164,7 @@ def test_api_datetime_input(api_instance, test_terms, test_dates):
 ##########################################################
 
 # Test: should raise ValueError when terms is None
-@pytest.mark.parametrize('api_key,api_instance', [(API_TO_TEST, API_TO_TEST)], indirect=True)
+@pytest.mark.parametrize('api_instance', [API_TO_TEST], indirect=True)
 def test_api_raises_when_terms_none(api_instance, test_dates):
     start = test_dates['short_range']['start']
     end = test_dates['short_range']['end']
@@ -172,7 +172,7 @@ def test_api_raises_when_terms_none(api_instance, test_dates):
         api_instance.search(search_term=None, start=start, end=end)
 
 # Test: should raise ValueError when start is None
-@pytest.mark.parametrize('api_key,api_instance', [(API_TO_TEST, API_TO_TEST)], indirect=True)
+@pytest.mark.parametrize('api_instance', [API_TO_TEST], indirect=True)
 def test_api_raises_when_start_none(api_instance, test_terms, test_dates):
     search_term = test_terms['term1']
     end = test_dates['short_range']['end']
@@ -180,7 +180,7 @@ def test_api_raises_when_start_none(api_instance, test_terms, test_dates):
         api_instance.search(search_term=search_term, start=None, end=end)
 
 # Test: should raise ValueError when end is None
-@pytest.mark.parametrize('api_key,api_instance', [(API_TO_TEST, API_TO_TEST)], indirect=True)
+@pytest.mark.parametrize('api_instance', [API_TO_TEST], indirect=True)
 def test_api_raises_when_end_none(api_instance, test_terms, test_dates):
     search_term = test_terms['term1']
     start = test_dates['short_range']['start']
@@ -188,7 +188,7 @@ def test_api_raises_when_end_none(api_instance, test_terms, test_dates):
         api_instance.search(search_term=search_term, start=start, end=None)
 
 # Test: should raise ValueError when the number of search terms is 6
-@pytest.mark.parametrize('api_key,api_instance', [(API_TO_TEST, API_TO_TEST)], indirect=True)
+@pytest.mark.parametrize('api_instance', [API_TO_TEST], indirect=True)
 def test_api_raises_when_too_many_terms(api_instance, test_dates, test_config):
     max_terms = test_config['api_parameters']['all']['max_terms']
     search_term = [f"term{i}" for i in range(max_terms + 1)]

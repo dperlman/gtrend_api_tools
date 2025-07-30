@@ -1,10 +1,10 @@
 from typing import Union, List, Optional, Dict, Any, Callable, Tuple, Protocol
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 import pandas as pd
 import inspect
 import threading
 from gtrend_api_tools.utils import _print_if_verbose, load_config
-from gtrend_api_tools.APIs.api_utils import standard_dict_to_df, api_string
+from gtrend_api_tools.api_utils import standard_dict_to_df, api_string
 from gtrend_api_tools.search_specs import DateRange, SearchSpec
 import requests
 from gtrend_api_tools.granularity import GranularityManager
@@ -24,7 +24,10 @@ class TrendSearchResult:
     def __init__(
         self,
         search_spec: Optional[SearchSpec] = None,
+        base_trends_request_url: Optional[str] = None,
         response: Optional[Any] = None,
+        send_timestamp: Optional[datetime] = None,
+        receive_timestamp: Optional[datetime] = None,
         raw_data: Optional[Any] = None,
         converter: Optional[DataConverter] = None,
         data: Optional[Any] = None,
@@ -35,7 +38,10 @@ class TrendSearchResult:
         
         Args:
             search_spec (Optional[SearchSpec]): The search specification that produced this result
+            base_trends_request_url (Optional[str]): The URL of the base trends request
             response (Optional[Any]): The HTTP response object from the API call
+            send_timestamp (Optional[datetime]): The timestamp when the request was sent
+            receive_timestamp (Optional[datetime]): The timestamp when the response was received
             raw_data (Optional[Any]): The raw data from the API response
             converter (Optional[DataConverter]): Function to convert raw_data to data. If None, uses identity function
             data (Optional[Any]): The standardized data. If None, will be converted from raw_data using converter
@@ -49,12 +55,35 @@ class TrendSearchResult:
         else:
             self.converter = converter
         
+        self.send_timestamp = send_timestamp
+        self.receive_timestamp = receive_timestamp
         self.raw_data = raw_data
         self.converter = converter
         self._data = data
         self._dataframe = dataframe
         self.search_spec = search_spec
+        self.base_trends_request_url = base_trends_request_url
         self.response = response
+    
+    def set_send_timestamp(self) -> None:
+        """
+        Set the send timestamp.
+        """
+        self.send_timestamp = datetime.now(timezone.utc)
+    
+    def set_receive_timestamp(self) -> None:
+        """
+        Set the receive timestamp.
+        """
+        self.receive_timestamp = datetime.now(timezone.utc)
+    
+    @property
+    def request_duration(self) -> timedelta:
+        """
+        Get the request duration.
+        """
+        return self.receive_timestamp - self.send_timestamp
+    
     
     @property
     def data(self) -> Any:
@@ -95,6 +124,19 @@ class TrendSearchResult:
         """
         if self._dataframe is None:
             self._dataframe = standard_dict_to_df(self.data)
+            # now set the metadata into dataframe attrs
+            attrs = {
+                'search_term_list': self.search_spec.terms,
+                'search_start': self.search_spec.str.search_start_ymd,
+                'search_end': self.search_spec.str.search_end_ymd,
+                'search_granularity': self.search_spec.granularity,
+                'search_api_string': self.search_spec.api,
+                'search_base_trends_request_url': self.base_trends_request_url,
+                'send_timestamp': self.send_timestamp,
+                'receive_timestamp': self.receive_timestamp,
+                'request_duration': self.request_duration,
+            }
+            self._dataframe.attrs.update(attrs)
         return self._dataframe
     
     @dataframe.setter
@@ -127,6 +169,7 @@ class TrendSearchErrorStatus:
     def __init__(
         self,
         search_spec: SearchSpec,
+        response: Optional[requests.Response] = None,
         error: str = "",
         error_type: str = "",
         error_data: Optional[Any] = None,
@@ -145,6 +188,7 @@ class TrendSearchErrorStatus:
             is_error (bool): Whether this represents an error state (default: False)
         """
         self.search_spec = search_spec
+        self.response = response
         self.error = error
         self.error_type = error_type
         self.error_data = error_data
@@ -276,7 +320,7 @@ class API_Call:
         self.base_trends_endpoint = base_trends_endpoint
         self.method = method
         self.granularity = granularity
-        self.api_string = self._api_string()
+        self.api_string = self._api_string(self.config)
         self.emulate_api = emulate_api or self.api_string # if we are not emulating an API, we use the actual API string
         self.kwargs = kwargs
         self._search_spec_history: List[SearchSpec] = []
@@ -322,7 +366,7 @@ class API_Call:
         internal_state = self._setup_search(search_spec, **kwargs)
         self._initialize_history([internal_state])
         self._do_search(internal_state)
-        return self
+        return self.search_result, self.search_error
     
 
     def search_batch(
@@ -330,7 +374,7 @@ class API_Call:
         search_spec_list: List[SearchSpec],
         method: str = 'thread',
         max_workers: int = 10
-    ) -> 'API_Call':
+    ) -> Tuple[List[TrendSearchResult], List[TrendSearchErrorStatus]]:
         """
         Execute multiple Google Trends searches in batch.
         
@@ -345,6 +389,11 @@ class API_Call:
         Raises:
             Exception: If any search in the batch fails
         """
+        # Get the history index that we are starting from
+        # We use this at the end to return the right number of results, in case this instance was already used before this!
+        history_index = len(self._search_spec_history)
+        num_results = len(search_spec_list)
+        
         # Set up the internal states for each search spec
         # It won't take long to do this because it does not involve any API calls or other IO.
         internal_state_list = [self._setup_search(search_spec) for search_spec in search_spec_list]
@@ -363,7 +412,11 @@ class API_Call:
             for internal_state in internal_state_list:
                 self._do_search(internal_state)
 
-        return self
+        # Return the right number of results
+        # This is to make sure that we return the right number of results, in case this instance was already used before this!
+        search_result_list = self._search_result_history[history_index:history_index+num_results]
+        search_error_list = self._search_error_history[history_index:history_index+num_results]
+        return search_result_list, search_error_list
 
 
     def _setup_search(
@@ -401,7 +454,6 @@ class API_Call:
             search_spec = SearchSpec(**search_kwargs)
 
         # Set up our internal storage object
-        # search_spec = search_spec we already have this
         internal_state = self._initialize_state(search_spec) # just do one in this case. the list will be used when we are doing any kind of batch search.
         # What we just did: made all 4 different objects we need for one search, and stored them all inside the state.
         # Now we have the one single current internal state object that manages the rest of the search.
@@ -417,6 +469,7 @@ class API_Call:
         internal_state.base_trends_request = self._base_trends_request(internal_state)
         internal_state.prepared_base_trends_request = internal_state.base_trends_request.prepare()
         internal_state.base_trends_request_url = internal_state.prepared_base_trends_request.url
+        internal_state.search_result.base_trends_request_url = internal_state.base_trends_request_url
         self.print_func(f"Base trends request URL: {internal_state.base_trends_request_url}")
 
         # Only do the API request if we have an API endpoint
@@ -461,20 +514,30 @@ class API_Call:
             print(internal_state.base_trends_request_url)
 
         # Make the request
+        internal_state.search_result.set_send_timestamp()
         response_raw_data = self.send_request(internal_state)
+        internal_state.search_result.set_receive_timestamp()
         response = response_raw_data['response']
         raw_data = response_raw_data['raw_data']
         # Update the search result with the raw data
         internal_state.search_result.raw_data = raw_data
         internal_state.search_result.response = response
-        self.print_func("  Search successful!")
+        self.print_func(f"  Search successful in {internal_state.search_result.request_duration.total_seconds()} seconds")
 
+        # Update the error status with the HTTP status code no matter what
+        current_error_status = internal_state.search_error
+        if hasattr(internal_state, 'response') and hasattr(internal_state.response, 'status_code'):
+            current_error_status.http_status_code = internal_state.response.status_code
+        else:
+            current_error_status.http_status_code = None
+        internal_state.search_error = current_error_status
+        
         # Check if there's an error in the results
         if isinstance(raw_data, dict) and "error" in raw_data:
             error_msg = raw_data["error"]
             self.print_func(f"{self.__class__.__name__} Search failed: {error_msg}")
             # Update the existing TrendSearchErrorStatus object using the property
-            current_error_status = internal_state.search_error
+            
             current_error_status.error = error_msg
             current_error_status.error_type = "APIError"
             current_error_status.is_error = True
@@ -679,19 +742,8 @@ class API_Call:
         """
         return raw_data
 
-    # def standardize_data(self) -> 'API_Call':
-    #     """
-    #     Standardize the raw data into a common format.
-    #     This method is kept for backward compatibility but now uses the TrendSearchResult system.
-        
-    #     Returns:
-    #         API_Call: Returns self for method chaining
-    #     """
-    #     # The standardization now happens automatically through the TrendSearchResult system
-    #     # This method is kept for backward compatibility but doesn't need to do anything
-    #     return self
 
-    def _api_string(self) -> Optional[str]:
+    def _api_string(self, config: Optional[Dict[str, Any]] = None) -> Optional[str]:
         """
         Get the API string identifier for this class from available_apis configuration.
         
@@ -700,7 +752,7 @@ class API_Call:
         """
         # Get the class name
         class_name = self.__class__.__name__
-        return api_string(class_name)
+        return api_string(class_name, config)
 
     @property
     def raw_data(self) -> Any:

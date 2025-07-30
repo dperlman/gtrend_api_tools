@@ -16,10 +16,10 @@ class Scrapingdog(API_Call):
         **kwargs
     ):
         """
-        Initialize the SearchApi class.
+        Initialize the Scrapingdog class.
         
         Args:
-            api_key (str): Your SearchApi API key
+            api_key (str): Your Scrapingdog API key
             api_endpoint (Optional[str]): The API endpoint URL. Defaults to "https://api.scrapingdog.com/google_trends"
             **kwargs: Additional keyword arguments passed to API_Call
         """
@@ -51,11 +51,11 @@ class Scrapingdog(API_Call):
 
     def raw_data_converter(self, raw_data: Any) -> Any:
         """
-        Convert SearchApi raw data to standardized format.
+        Convert Scrapingdog raw data to standardized format.
         Transforms the interest_over_time data into a list of dictionaries with date and values.
         
         Args:
-            raw_data (Any): Raw data from SearchApi response
+            raw_data (Any): Raw data from Scrapingdog response
             
         Returns:
             Any: Standardized data in the common format
@@ -91,15 +91,3 @@ class Scrapingdog(API_Call):
         
         self.print_func(f"Standardized data length: {len(data)}")
         return data
-
-    # def standardize_data(self) -> 'Scrapingdog':
-    #     """
-    #     Standardize the raw data into a common format.
-    #     This method is kept for backward compatibility but now uses the TrendSearchResult system.
-        
-    #     Returns:
-    #         Scrapingdog: Returns self for method chaining
-    #     """
-    #     # The standardization now happens automatically through the TrendSearchResult system
-    #     # This method is kept for backward compatibility but doesn't need to do anything
-    #     return self

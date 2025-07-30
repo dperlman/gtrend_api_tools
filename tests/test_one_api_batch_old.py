@@ -1,6 +1,6 @@
 import pytest
 from datetime import datetime, timezone
-from gtrend_api_tools.APIs.batch import TrendSearchBatch
+from gtrend_api_tools.batch import TrendSearchBatch
 from gtrend_api_tools.search_specs import SearchSpec
 
 # Configure which API to test - change this to test different APIs

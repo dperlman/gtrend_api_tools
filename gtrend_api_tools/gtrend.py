@@ -94,7 +94,7 @@ class Trends:
         # Set API mode based on use_api or api_mode argument
         if use_api:
             # Validate use_api against available_apis
-            from .APIs import available_apis
+            available_apis = self.config.get('available_apis', {})
             if use_api not in available_apis:
                 raise ValueError(f"Invalid API: {use_api}. Must be one of: {list(available_apis.keys())}")
             
@@ -317,11 +317,11 @@ class Trends:
         Raises:
             Exception: If all APIs in the order fail
         """
-        from .APIs import available_apis
         
         # Try each API in the configured order
         for api_name in self.api_mode['api_order']:
             self._print(f"Trying API: {api_name}")
+            available_apis = self.config.get('available_apis', {})
             api_info = available_apis[api_name]
             
             # For paid APIs, check if we have the key

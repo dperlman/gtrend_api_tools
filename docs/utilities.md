@@ -55,36 +55,46 @@ Saves search results to a CSV file. The results should be in the format returned
 
 ### available_apis
 ```python
-from gtrend_api_tools import available_apis
+from gtrend_api_tools import load_config
 
-apis = available_apis()
+config = load_config()
+available_apis = config.get('available_apis', {})
 ```
 
 Returns a list of all available API implementations.
 
 ### get_free_apis
+
+Get dictionary of available free APIs with their metadata:
+
 ```python
-from gtrend_api_tools import get_free_apis
+from gtrend_api_tools import load_config
 
-free_apis = get_free_apis()
+config = load_config()
+available_apis = config.get('available_apis', {})
+free_apis = {name: info for name, info in available_apis.items() if info['type'] == 'free'}
 ```
-
-Returns a list of free API implementations.
 
 ### get_paid_apis
+
+Get dictionary of available paid APIs with their metadata:
+
 ```python
-from gtrend_api_tools import get_paid_apis
+from gtrend_api_tools import load_config
 
-paid_apis = get_paid_apis()
+config = load_config()
+available_apis = config.get('available_apis', {})
+paid_apis = {name: info for name, info in available_apis.items() if info['type'] == 'paid'}
 ```
-
-Returns a list of paid API implementations.
 
 ### get_api_info
+
+Get metadata for a specific API:
+
 ```python
-from gtrend_api_tools import get_api_info
+from gtrend_api_tools import load_config
 
-info = get_api_info(api_name)
-```
-
-Returns detailed information about a specific API implementation. 
+config = load_config()
+available_apis = config.get('available_apis', {})
+info = available_apis.get(api_name)
+``` 

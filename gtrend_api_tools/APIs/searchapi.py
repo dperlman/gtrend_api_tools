@@ -92,15 +92,3 @@ class SearchApi(API_Call):
         
         self.print_func(f"Standardized data length: {len(data)}")
         return data
-
-    # def standardize_data(self) -> 'SearchApi':
-    #     """
-    #     Standardize the raw data into a common format.
-    #     This method is kept for backward compatibility but now uses the TrendSearchResult system.
-        
-    #     Returns:
-    #         SearchApi: Returns self for method chaining
-    #     """
-    #     # The standardization now happens automatically through the TrendSearchResult system
-    #     # This method is kept for backward compatibility but doesn't need to do anything
-    #     return self
