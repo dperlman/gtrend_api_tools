@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 from typing import Union, List, Optional, Dict, Any
 import pandas as pd
 from gtrend_api_tools.granularity import GranularityManager
-from gtrend_api_tools.APIs.base_classes import API_Call, TrendSearchInternalState, TrendSearchResult
+from gtrend_api_tools.APIs.base_classes import API_Call, TrendSearchContainer, TrendSearchResult
 from gtrend_api_tools.api_utils import sinc_data
 from gtrend_api_tools.date_strings import cleanup_date_str
 import numpy as np
@@ -51,7 +51,7 @@ class DummyApi(API_Call):
         )
         self.fill_value = fill_value
 
-    def send_request(self, internal_state: TrendSearchInternalState) -> Dict[str, Any]:
+    def send_request(self, internal_state: TrendSearchContainer) -> Dict[str, Any]:
         """
         Override send_request to generate dummy data instead of making HTTP requests.
         """

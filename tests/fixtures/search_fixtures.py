@@ -56,38 +56,40 @@ def test_dates():
 
 @pytest.fixture(scope="module")
 def simple_test_cases():
-    test_case_list = [
-        ("2020-01-01 2020-03-01", "breakfast,lunch"),
-        ("2020-01-02 2020-03-03", "stock market"),
-        ("2020-01-03 2020-03-05", "hot dog,ice cream"),
-        ("2020-01-04 2020-03-07", "coffee,tea"),
-        ("2020-01-05 2020-03-09", "wine,beer"),
-        ("2020-01-06 2020-03-11", "soda,water"),
-        ("2020-01-07 2020-03-13", "honda,toyota,ford,chevy,nissan"),
-        ("2020-01-08 2020-03-15", "goldfish,clownfish,angelfish"),
-        ("2020-01-09 2020-03-17", "freshwater,saltwater"),
-        ("2020-01-10 2020-03-19", "bitcoin,ethereum,dogecoin,xrp"),
-        ("2020-01-11 2020-03-21", "bacon"),
-        ("2020-01-12 2020-03-23", "yogurt,cheese"),
-        ("2020-01-13 2020-03-25", "hamburger,pizza"),
-        ("2020-01-14 2020-03-27", "therapy"),
-        ("2020-01-15 2020-03-29", "election"),
-        ("2020-01-16 2020-03-31", "war"),
-        ("2020-01-17 2020-04-02", "weather"),
-        ("2020-01-18 2020-04-04", "politics"),
-        ("2020-01-19 2020-04-06", "economy"),
-        ("2020-01-20 2020-04-08", "health"),
-        ("2020-01-21 2020-04-10", "crime"),
-        ("2020-01-22 2020-04-12", "education"),
-        ("2020-01-23 2020-04-14", "technology"),
-        ("2020-01-24 2020-04-16", "science"),
-        ("2020-01-25 2020-04-18", "environment"),
-        ("2020-01-26 2020-04-20", "space"),
-        ("2020-01-27 2020-04-22", "sports"),
-        ("2020-01-28 2020-04-24", "entertainment"),
-        ("2020-01-29 2020-04-26", "travel")
-    ]
-    return test_case_list
+    return simple_test_case_list
+
+simple_test_case_list = [
+    ("2020-01-01 2020-03-01", "breakfast,lunch"),
+    ("2020-01-02 2020-03-03", "stock market"),
+    ("2020-01-03 2020-03-05", "hot dog,ice cream"),
+    ("2020-01-04 2020-03-07", "coffee,tea"),
+    ("2020-01-05 2020-03-09", "wine,beer"),
+    ("2020-01-06 2020-03-11", "soda,water"),
+    ("2020-01-07 2020-03-13", "honda,toyota,ford,chevy,nissan"),
+    ("2020-01-08 2020-03-15", "goldfish,clownfish,angelfish"),
+    ("2020-01-09 2020-03-17", "freshwater,saltwater"),
+    ("2020-01-10 2020-03-19", "bitcoin,ethereum,dogecoin,xrp"),
+    ("2020-01-11 2020-03-21", "bacon"),
+    ("2020-01-12 2020-03-23", "yogurt,cheese"),
+    ("2020-01-13 2020-03-25", "hamburger,pizza"),
+    ("2020-01-14 2020-03-27", "therapy"),
+    ("2020-01-15 2020-03-29", "election"),
+    ("2020-01-16 2020-03-31", "war"),
+    ("2020-01-17 2020-04-02", "weather"),
+    ("2020-01-18 2020-04-04", "politics"),
+    ("2020-01-19 2020-04-06", "economy"),
+    ("2020-01-20 2020-04-08", "health"),
+    ("2020-01-21 2020-04-10", "crime"),
+    ("2020-01-22 2020-04-12", "education"),
+    ("2020-01-23 2020-04-14", "technology"),
+    ("2020-01-24 2020-04-16", "science"),
+    ("2020-01-25 2020-04-18", "environment"),
+    ("2020-01-26 2020-04-20", "space"),
+    ("2020-01-27 2020-04-22", "sports"),
+    ("2020-01-28 2020-04-24", "entertainment"),
+    ("2020-01-29 2020-04-26", "travel")
+]
+
 
 @pytest.fixture(scope="module")
 def num_granularity_test_dates():

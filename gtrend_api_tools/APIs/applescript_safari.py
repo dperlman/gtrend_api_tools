@@ -7,7 +7,7 @@ from typing import Optional, Callable, List, Dict, Any, Union, Literal
 import rjsmin
 import html
 from bs4 import BeautifulSoup
-from gtrend_api_tools.APIs.base_classes import API_Call, TrendSearchResult, TrendSearchInternalState
+from gtrend_api_tools.APIs.base_classes import API_Call, TrendSearchResult, TrendSearchContainer
 import pandas as pd
 from gtrend_api_tools.utils import _print_if_verbose
 from gtrend_api_tools.search_specs import DateRange, GtrendDateRange
@@ -223,7 +223,7 @@ class ApplescriptSafari(API_Call):
     #     self._initialize_history([internal_state])
 
 
-    def _do_search(self, internal_state: TrendSearchInternalState) -> 'ApplescriptSafari':
+    def _do_search(self, internal_state: TrendSearchContainer) -> 'ApplescriptSafari':
         # Get the processed search spec for dates
         spec = internal_state.search_spec
         

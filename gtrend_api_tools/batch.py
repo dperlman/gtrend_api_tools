@@ -7,6 +7,7 @@ from typing import Union, List, Dict, Any, Optional
 from types import SimpleNamespace
 from gtrend_api_tools.search_specs import SearchSpec
 from gtrend_api_tools.APIs.base_classes import API_Call, TrendSearchResult
+from gtrend_api_tools.utils import load_config
 
 
 class CompoundBatch:
@@ -22,7 +23,81 @@ class CompoundBatch:
         method: str = "simple",
         max_workers: int = 10
     ):
-        pass
+        """
+        Initialize the CompoundBatch.
+        
+        Args:
+            compound_spec_list (List[List[SearchSpec]]): List of lists of SearchSpec objects
+            method (str): The execution method to use
+            max_workers (int): Maximum number of workers for concurrent execution
+        """
+        self.compound_spec_list = compound_spec_list
+        self.method = method
+        self.max_workers = max_workers
+        self.config = load_config()
+        self.batch_config_list = self.validate_spec_list()
+        
+        # Create compound_result_list with the same shape as compound_spec_list
+        # Fill each element with an empty TrendSearchResult() instance
+        self.compound_result_list = []
+        for inner_spec_list in self.compound_spec_list:
+            inner_result_list = []
+            for _ in inner_spec_list:
+                inner_result_list.append(TrendSearchResult())
+            self.compound_result_list.append(inner_result_list)
+    
+    def validate_spec_list(self) -> List[Dict[str, Any]]:
+        """
+        Validate the spec_list.
+        
+        For each inner list, ensures that every SearchSpec has the same .api property.
+        Different sub-lists can have different .api properties.
+        
+        Returns:
+            List[Dict[str, Any]]: List of dictionaries with 'api' and 'max_workers' keys
+        """
+        batch_configs = []
+        
+        for i, inner_list in enumerate(self.compound_spec_list):
+            if not inner_list:
+                raise ValueError(f"Compound spec list[{i}] is empty")
+            
+            # Get the api from the first SearchSpec in this inner list
+            first_api = inner_list[0].api
+            
+            # Check that all SearchSpecs in this inner list have the same api
+            api_mismatch = False
+            for j, spec in enumerate(inner_list):
+                if not isinstance(spec, SearchSpec):
+                    raise ValueError(f"Compound spec list[{i}][{j}] is not a SearchSpec: {type(spec)}")
+                
+                if spec.api != first_api:
+                    api_mismatch = True
+                    break
+            
+            # Use None if there's an API mismatch, otherwise use the first API
+            api_value = None if api_mismatch else first_api
+            
+            # Determine max_workers for this API
+            if self.max_workers is not None:
+                max_workers = self.max_workers
+            else:
+                # Get from config if API is valid, otherwise use a default
+                if api_value is not None:
+                    try:
+                        max_workers = self.config['available_apis'][api_value]['default_concurrency']
+                    except KeyError:
+                        raise ValueError(f"API '{api_value}' not found in config or missing 'default_concurrency' setting")
+                else:
+                    # Use a default value when API is None
+                    max_workers = self.max_workers
+            
+            batch_configs.append({
+                'api': api_value,
+                'max_workers': max_workers
+            })
+        
+        return batch_configs
 
 
 class TrendSearchBatch:

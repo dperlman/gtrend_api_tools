@@ -213,7 +213,7 @@ class TrendSearchErrorStatus:
         return self.is_error
     
 
-class TrendSearchInternalState:
+class TrendSearchContainer:
     """
     A class to hold the internal state during a search operation.
     
@@ -247,6 +247,14 @@ class TrendSearchInternalState:
         
         # Status
         self.completed: bool = False
+    
+    def __str__(self) -> str:
+        """String representation of the state container."""
+        return f"TrendSearchContainer(search_spec={self.search_spec}, search_result={self.search_result}, search_error={self.search_error})"
+    
+    def __repr__(self) -> str:
+        """Detailed string representation of the state container."""
+        return f"TrendSearchContainer(search_spec={self.search_spec}, search_result={self.search_result}, search_error={self.search_error})"
 
 class API_Call:
     """
@@ -324,7 +332,7 @@ class API_Call:
         self.emulate_api = emulate_api or self.api_string # if we are not emulating an API, we use the actual API string
         self.kwargs = kwargs
         self._search_spec_history: List[SearchSpec] = []
-        self._internal_state_history: List[TrendSearchInternalState] = []
+        self._internal_state_history: List[TrendSearchContainer] = []
         self._search_result_history: List[TrendSearchResult] = []
         self._search_error_history: List[TrendSearchErrorStatus] = []
         self._date_range: Optional[DateRange] = None
@@ -363,10 +371,14 @@ class API_Call:
             Exception: If the search fails or returns an error
         """
         
-        internal_state = self._setup_search(search_spec, **kwargs)
+        internal_state = self.make_search_state_container(search_spec, **kwargs)
         self._initialize_history([internal_state])
-        self._do_search(internal_state)
-        return self.search_result, self.search_error
+        self._do_search(internal_state) # this returns the internal state but we don't need it because it's the same object as the one we called with
+        # search_result_list = self._search_result_history[self._batch_history_index:self._batch_history_index+self._batch_num_results]
+        # search_error_list = self._search_error_history[self._batch_history_index:self._batch_history_index+self._batch_num_results]
+        # that's wrong, come back to that
+        
+        return internal_state.search_result, internal_state.search_error
     
 
     def search_batch(
@@ -384,46 +396,80 @@ class API_Call:
             max_workers (int): Maximum number of worker threads when using 'thread' method. Defaults to 10
             
         Returns:
-            API_Call: Returns self for method chaining
+            Tuple[List[TrendSearchResult], List[TrendSearchErrorStatus]]: Results and errors from batch execution
             
         Raises:
             Exception: If any search in the batch fails
         """
+        # Make the state containers
+        state_container_list = self.make_state_container_list(search_spec_list)
+        
+        # Set up the batch
+        self._setup_batch(state_container_list)
+        
+        # Execute the batch
+        search_result_list, search_error_list = self._execute_batch(state_container_list, method, max_workers)
+        return search_result_list, search_error_list
+
+    def make_state_container_list(self, search_spec_list: List[SearchSpec]) -> List[TrendSearchContainer]:
+        """
+        Make a list of state containers for the batch search.
+        """
+        return [self.make_search_state_container(search_spec) for search_spec in search_spec_list]
+    
+    def _setup_batch(self, state_container_list: List[TrendSearchContainer]) -> None:
+        """
+        Set up the batch search by preparing internal states and initializing history.
+        
+        Args:
+            search_spec_list (List[SearchSpec]): List of search specifications to execute
+        """
         # Get the history index that we are starting from
         # We use this at the end to return the right number of results, in case this instance was already used before this!
-        history_index = len(self._search_spec_history)
-        num_results = len(search_spec_list)
+        self._batch_history_index = len(self._search_spec_history)
+        self._batch_num_results = len(state_container_list)
         
         # Set up the internal states for each search spec
         # It won't take long to do this because it does not involve any API calls or other IO.
-        internal_state_list = [self._setup_search(search_spec) for search_spec in search_spec_list]
+        self._batch_internal_state_list = state_container_list # Do we even need this?????
         # This will initialize all the history lists atomically because of the internal locks in the _initialize_history method.
-        self._initialize_history(internal_state_list)
+        self._initialize_history(self._batch_internal_state_list)
 
+    def _execute_batch(self, batch_internal_state_list: List[TrendSearchContainer], method: str = 'thread', max_workers: int = 10) -> Tuple[List[TrendSearchResult], List[TrendSearchErrorStatus]]:
+        """
+        Execute the batch search using the prepared internal states.
+        
+        Args:
+            method (str): Execution method. One of 'thread' (parallel) or 'sequential'. Defaults to 'thread'
+            max_workers (int): Maximum number of worker threads when using 'thread' method. Defaults to 10
+            
+        Returns:
+            Tuple[List[TrendSearchResult], List[TrendSearchErrorStatus]]: Results and errors from batch execution
+        """
         # Do the search
         if method == 'thread':
             # Execute with ThreadPoolExecutor
             import concurrent.futures
             with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-                futures = [executor.submit(self._do_search, internal_state) for internal_state in internal_state_list]
+                futures = [executor.submit(self._do_search, internal_state) for internal_state in batch_internal_state_list]
                 concurrent.futures.wait(futures)
     
         elif method == 'sequential':
-            for internal_state in internal_state_list:
+            for internal_state in batch_internal_state_list:
                 self._do_search(internal_state)
 
         # Return the right number of results
         # This is to make sure that we return the right number of results, in case this instance was already used before this!
-        search_result_list = self._search_result_history[history_index:history_index+num_results]
-        search_error_list = self._search_error_history[history_index:history_index+num_results]
+        search_result_list = self._search_result_history[self._batch_history_index:self._batch_history_index+self._batch_num_results]
+        search_error_list = self._search_error_history[self._batch_history_index:self._batch_history_index+self._batch_num_results]
         return search_result_list, search_error_list
 
 
-    def _setup_search(
+    def make_search_state_container(
         self,
         search_spec: Optional[SearchSpec] = None,
         **kwargs
-    ) -> TrendSearchInternalState:
+    ) -> TrendSearchContainer:
         """
         Set up the search parameters and configuration.
         This method handles the common setup logic that all APIs need.
@@ -433,7 +479,7 @@ class API_Call:
             **kwargs: Arguments passed to SearchSpec constructor (search_term, start_date, end_date, date_range, granularity, verbose)
             
         Returns:
-            TrendSearchInternalState: The internal state for this search
+            TrendSearchContainer: The internal state for this search
         """
         
         self.print_func(f"Preparing {self.__class__.__name__} search request:")
@@ -495,13 +541,13 @@ class API_Call:
 
     def _do_search(
         self,
-        internal_state: TrendSearchInternalState
+        internal_state: TrendSearchContainer
     ) -> 'API_Call':
         """
         Search Google Trends using the API.
         
         Args:
-            internal_state (TrendSearchInternalState): The internal state containing search configuration
+            internal_state (TrendSearchContainer): The internal state containing search configuration
             
         Returns:
             API_Call: Returns self for method chaining. The raw data is stored in self.raw_data
@@ -513,13 +559,14 @@ class API_Call:
             print("Google Trends URL:")
             print(internal_state.base_trends_request_url)
 
-        # Make the request
+        # Make the request, tracking timestamps
         internal_state.search_result.set_send_timestamp()
         response_raw_data = self.send_request(internal_state)
         internal_state.search_result.set_receive_timestamp()
+
+        # Update the search result with the raw data
         response = response_raw_data['response']
         raw_data = response_raw_data['raw_data']
-        # Update the search result with the raw data
         internal_state.search_result.raw_data = raw_data
         internal_state.search_result.response = response
         self.print_func(f"  Search successful in {internal_state.search_result.request_duration.total_seconds()} seconds")
@@ -549,10 +596,10 @@ class API_Call:
         
         # Print success message
         self.print_func(f"{self.__class__.__name__} request sent successfully!")
-        return self
+        return internal_state
 
 
-    def _initialize_state(self, search_spec: SearchSpec) -> TrendSearchInternalState:
+    def _initialize_state(self, search_spec: SearchSpec) -> TrendSearchContainer:
         """
         Initialize the collection of state objects for a single search
         and encapsulate them in a single internal state object.
@@ -561,20 +608,20 @@ class API_Call:
             search_spec (SearchSpec): The search specification to create state for
             
         Returns:
-            TrendSearchInternalState: The initialized internal state object
+            TrendSearchContainer: The initialized internal state object
         """
         search_result = TrendSearchResult(search_spec=search_spec, converter=self.raw_data_converter)
         search_error = TrendSearchErrorStatus(search_spec=search_spec)
-        internal_state = TrendSearchInternalState(search_spec=search_spec, search_result=search_result, search_error=search_error)
+        internal_state = TrendSearchContainer(search_spec=search_spec, search_result=search_result, search_error=search_error)
         return internal_state
     
     
-    def _initialize_history(self, state_list: List[TrendSearchInternalState]) -> None:
+    def _initialize_history(self, state_list: List[TrendSearchContainer]) -> None:
         """
         Initialize the history objects by extracting components from internal states.
         
         Args:
-            state_list (List[TrendSearchInternalState]): List of internal states to add to history
+            state_list (List[TrendSearchContainer]): List of internal states to add to history
         """
         spec_list = []
         result_list = []
@@ -592,12 +639,12 @@ class API_Call:
         
         return
 
-    def _base_trends_request_params(self, internal_state: TrendSearchInternalState) -> Dict[str, Any]:
+    def _base_trends_request_params(self, internal_state: TrendSearchContainer) -> Dict[str, Any]:
         """
         Construct the base request parameters for Google Trends.
         
         Args:
-            internal_state (TrendSearchInternalState): The internal state containing search configuration
+            internal_state (TrendSearchContainer): The internal state containing search configuration
             
         Returns:
             Dict[str, Any]: Dictionary of request parameters
@@ -618,12 +665,12 @@ class API_Call:
             params['hl'] = self.language
         return params
 
-    def _base_trends_request(self, internal_state: TrendSearchInternalState) -> requests.Request:
+    def _base_trends_request(self, internal_state: TrendSearchContainer) -> requests.Request:
         """
         Construct the base request for Google Trends.
         
         Args:
-            internal_state (TrendSearchInternalState): The internal state containing search configuration
+            internal_state (TrendSearchContainer): The internal state containing search configuration
             
         Returns:
             requests.Request: The not-yet-prepared request object
@@ -632,12 +679,12 @@ class API_Call:
         req = requests.Request('GET', self.base_trends_endpoint, params=params)
         return req
 
-    def _request_headers(self, internal_state: TrendSearchInternalState) -> Dict[str, Any]:
+    def _request_headers(self, internal_state: TrendSearchContainer) -> Dict[str, Any]:
         """
         Set up the request headers for the API call.
         
         Args:
-            internal_state (TrendSearchInternalState): The internal state containing search configuration
+            internal_state (TrendSearchContainer): The internal state containing search configuration
             
         Returns:
             Dict[str, Any]: Dictionary of request headers
@@ -645,12 +692,12 @@ class API_Call:
         headers = {}
         return headers
 
-    def _request_params(self, internal_state: TrendSearchInternalState) -> Dict[str, Any]:
+    def _request_params(self, internal_state: TrendSearchContainer) -> Dict[str, Any]:
         """
         Set up the request parameters for the API call.
         
         Args:
-            internal_state (TrendSearchInternalState): The internal state containing search configuration
+            internal_state (TrendSearchContainer): The internal state containing search configuration
             
         Returns:
             Dict[str, Any]: Dictionary of request parameters
@@ -672,12 +719,12 @@ class API_Call:
             params['hl'] = self.language
         return params
 
-    def _request_data(self, internal_state: TrendSearchInternalState) -> Dict[str, Any]:
+    def _request_data(self, internal_state: TrendSearchContainer) -> Dict[str, Any]:
         """
         Set up the request data for the API call.
         
         Args:
-            internal_state (TrendSearchInternalState): The internal state containing search configuration
+            internal_state (TrendSearchContainer): The internal state containing search configuration
             
         Returns:
             Dict[str, Any]: Dictionary of request data
@@ -685,12 +732,12 @@ class API_Call:
         data = {}
         return data
 
-    def _request(self, internal_state: TrendSearchInternalState) -> requests.Request:
+    def _request(self, internal_state: TrendSearchContainer) -> requests.Request:
         """
         Construct the request object for the API call.
         
         Args:
-            internal_state (TrendSearchInternalState): The internal state containing search configuration
+            internal_state (TrendSearchContainer): The internal state containing search configuration
             
         Returns:
             requests.Request: The not-yet-prepared request object
@@ -709,12 +756,12 @@ class API_Call:
         )
         return req
 
-    def send_request(self, internal_state: TrendSearchInternalState) -> Dict[str, Any]:
+    def send_request(self, internal_state: TrendSearchContainer) -> Dict[str, Any]:
         """
         Make the HTTP request to the API.
         
         Args:
-            internal_state (TrendSearchInternalState): The internal state containing the prepared request
+            internal_state (TrendSearchContainer): The internal state containing the prepared request
             
         Returns:
             Dict[str, Any]: Dictionary containing 'response' and 'raw_data' keys
@@ -832,12 +879,12 @@ class API_Call:
             self._search_spec_history.append(spec)
 
     @property
-    def internal_state(self) -> TrendSearchInternalState:
+    def internal_state(self) -> TrendSearchContainer:
         """
         Get the current internal state.
         
         Returns:
-            TrendSearchInternalState: The current internal state
+            TrendSearchContainer: The current internal state
             
         Raises:
             ValueError: If no internal state is available
@@ -848,12 +895,12 @@ class API_Call:
             return self._internal_state_history[-1]
 
     @internal_state.setter
-    def internal_state(self, state: TrendSearchInternalState) -> None:
+    def internal_state(self, state: TrendSearchContainer) -> None:
         """
         Set the current internal state and append it to the history.
         
         Args:
-            state (TrendSearchInternalState): Internal state to set
+            state (TrendSearchContainer): Internal state to set
         """
         with self._history_lock:
             self._internal_state_history.append(state)
@@ -924,12 +971,12 @@ class API_Call:
             return self._search_spec_history.copy()
 
     @property
-    def internal_state_history(self) -> List[TrendSearchInternalState]:
+    def internal_state_history(self) -> List[TrendSearchContainer]:
         """
         Get the internal state history.
         
         Returns:
-            List[TrendSearchInternalState]: List of internal state objects for previous searches
+            List[TrendSearchContainer]: List of internal state objects for previous searches
         """
         with self._history_lock:
             return self._internal_state_history.copy()
@@ -962,7 +1009,7 @@ class API_Call:
     #     """
     #     Create a copy of this API instance with the same initialization parameters.
     #     This was a temporary hack to allow for thread-local storage of the API instance.
-    #     It is now replaced by the TrendSearchInternalState system.
+    #     It is now replaced by the TrendSearchContainer system.
         
     #     Returns:
     #         API_Call: A new instance of the same class with identical configuration
@@ -1070,7 +1117,7 @@ class API_Call:
     #         futures = [executor.submit(execute_single_search, args) for args in search_args]
     #         concurrent.futures.wait(futures)
     
-    # def _update_search_result(self, start_idx: int, batch_index: int, result: Optional[TrendSearchResult], error: Optional[Dict[str, Any]] = None, internal_state: Optional[TrendSearchInternalState] = None) -> None:
+    # def _update_search_result(self, start_idx: int, batch_index: int, result: Optional[TrendSearchResult], error: Optional[Dict[str, Any]] = None, internal_state: Optional[TrendSearchContainer] = None) -> None:
     #     """
     #     Thread-safe update of a single search result.
         
@@ -1079,7 +1126,7 @@ class API_Call:
     #         batch_index (int): Index within the current batch
     #         result (Optional[TrendSearchResult]): Search result (None if error)
     #         error (Optional[Dict[str, Any]]): Error information (None if success)
-    #         internal_state (Optional[TrendSearchInternalState]): Internal state (None if not provided)
+    #         internal_state (Optional[TrendSearchContainer]): Internal state (None if not provided)
     #     """
     #     with self._history_lock:
     #         actual_index = start_idx + batch_index

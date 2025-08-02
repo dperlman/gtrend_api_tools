@@ -48,7 +48,7 @@ def test_api(api_instance, api_name, start_date, end_date, search_term, verbose:
     standardized_data = api_instance.data
     #print(f"Standardized data: {standardized_data}")
     dataframe = api_instance.dataframe
-    #print(f"Dataframe: {dataframe}")
+    print(f"Dataframe columns: {dataframe.columns}")
 
 
     if save_files:
@@ -104,10 +104,10 @@ def main():
         #{"name": "ApplescriptSafari", "instance": None, "search_term": "coffee,tea"},
         #{"name": "Brightdata", "instance": None, "search_term": "coffee,tea"},
         #{"name": "Scrapingdog", "instance": None, "search_term": "coffee,tea"},
-        {"name": "Decodo", "instance": None, "search_term": "coffee,tea"},
+        #{"name": "Decodo", "instance": None, "search_term": "coffee,tea"},
         #{"name": "ApplescriptSafari", "instance": None, "search_term": "car,truck"},
         #{"name": "TrendsPy", "instance": None, "search_term": "coffee,tea"},
-        #{"name": "DummyApi", "instance": None, "search_term": "coffee,tea"}
+        {"name": "DummyApi", "instance": None, "search_term": "coffee,tea"}
     ]
 
     # Create API instances

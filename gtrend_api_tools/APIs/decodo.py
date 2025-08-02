@@ -5,7 +5,7 @@ from typing import Union, List, Optional, Dict, Any
 import pandas as pd
 import unicodedata
 import json
-from gtrend_api_tools.APIs.base_classes import API_Call, TrendSearchInternalState
+from gtrend_api_tools.APIs.base_classes import API_Call, TrendSearchContainer
 from gtrend_api_tools.search_specs import SearchSpec, DateRange
 from gtrend_api_tools.date_strings import cleanup_date_str, standardize_date_range_start
 
@@ -27,7 +27,7 @@ class Decodo(API_Call):
         """
         super().__init__(api_key=api_key, api_endpoint=api_endpoint, method=method, **kwargs)
 
-    def _request_headers(self, internal_state: TrendSearchInternalState) -> Dict[str, Any]:
+    def _request_headers(self, internal_state: TrendSearchContainer) -> Dict[str, Any]:
         """
         Set up the request headers
         """
@@ -38,12 +38,12 @@ class Decodo(API_Call):
         }
         return headers
 
-    def _request_params(self, internal_state: TrendSearchInternalState) -> Dict[str, Any]:
+    def _request_params(self, internal_state: TrendSearchContainer) -> Dict[str, Any]:
         # Set up the request parameters
         params = None
         return params
 
-    def _request_data(self, internal_state: TrendSearchInternalState) -> Dict[str, Any]:
+    def _request_data(self, internal_state: TrendSearchContainer) -> Dict[str, Any]:
         """
         Set up the request data
         """

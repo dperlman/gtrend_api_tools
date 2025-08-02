@@ -73,15 +73,16 @@ api_granularity_overrides:
   # There are no overrides for brightdata, they are actually doing this right. They are VERY slow though. About 9 times slower than searchapi.
   brightdata:
   # serpapi has a hard-coded day limit of 7 for hourly. This is a bug. I reported it on their github, which is nice. https://github.com/serpapi/public-roadmap/issues/2918
+  # update: they fixed it within 24 hours of me reporting it. that's nice. So I will comment this out.
   serpapi:
-    h:
-      name: "hourly"
-      freq: "h"
-      search_resolution: "h"
-      result_resolution: "h"
-      fixed: True
-      max_records: 168
-      record_seconds: 3600``
+    # h:
+    #   name: "hourly"
+    #   freq: "h"
+    #   search_resolution: "h"
+    #   result_resolution: "h"
+    #   fixed: True
+    #   max_records: 168
+    #   record_seconds: 3600
   # serpwow doesn't allow any resolution finer than daily. I don't know if this is intentional or a bug.
   # Because there are so many limitations, I haven't bothered to do much speed testing.
   serpwow:

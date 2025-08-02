@@ -5,7 +5,7 @@ from typing import Union, List, Optional, Dict, Any
 import pandas as pd
 import unicodedata
 from gtrend_api_tools.search_specs import DateRange, SearchSpec
-from gtrend_api_tools.APIs.base_classes import API_Call, TrendSearchInternalState
+from gtrend_api_tools.APIs.base_classes import API_Call, TrendSearchContainer
 from gtrend_api_tools.date_strings import cleanup_date_str, standardize_date_range_start
 
 class SearchApi(API_Call):
@@ -26,7 +26,7 @@ class SearchApi(API_Call):
         super().__init__(api_key=api_key, api_endpoint=api_endpoint, **kwargs)
 
                 
-    def _request_params(self, internal_state: TrendSearchInternalState) -> Dict[str, Any]:
+    def _request_params(self, internal_state: TrendSearchContainer) -> Dict[str, Any]:
         # Set up the request parameters
         params = {
             'q': internal_state.search_spec.term_string,
