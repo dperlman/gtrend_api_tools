@@ -90,8 +90,8 @@ class Decodo(API_Call):
         raw_date_list = []
         data = []
         for time_idx in range(len(interest_over_time[0]['items'])):
+            value_queries = []
             for item_idx in range(len(interest_over_time)):
-                value_queries = []
                 item = interest_over_time[item_idx]['items'][time_idx]
                 date = item['time'] # we do this twice which is unnecessary but harmless
                 value = item['value']

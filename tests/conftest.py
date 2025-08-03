@@ -15,7 +15,9 @@ from .fixtures.batch_fixtures import spec_list
 
 def pytest_configure(config):
     """Print the current API being tested before running tests."""
-    print(f"\nRunning tests with API: {API_TO_TEST}\n")
+    # print(f"\nRunning tests with API: {API_TO_TEST}\n")
+    # this is wrong
+    pass
 
 # Re-export all fixtures
 __all__ = [

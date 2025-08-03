@@ -89,7 +89,7 @@ class DummyApi(API_Call):
             # Create entries for each date
             for i, date in enumerate(spec.datetime_index):
                 entry = {
-                    'date': date.strftime('%Y-%m-%d'),
+                    'date': date.strftime('%Y-%m-%dT%H:%M:%S'),
                     'values': [
                         {
                             'query': term,
@@ -111,7 +111,7 @@ class DummyApi(API_Call):
             # Fill with constant value
             for date in spec.datetime_index:
                 entry = {
-                    'date': date.strftime('%Y-%m-%d'),
+                    'date': date.strftime('%Y-%m-%dT%H:%M:%S'),
                     'values': [
                         {
                             'query': term,

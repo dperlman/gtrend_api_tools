@@ -11,8 +11,28 @@ CLOSE_TABS = True # Close tabs after each search. This is useful for Applescript
 #### Note that if we ever implement a corresponding browser-based API for Windows or Linux,
 #### we will want to make sure to also add this option for those.
 
-def test_api(api_instance, api_name, start_date, end_date, search_term, verbose: bool = True, save_files: bool = False):
-    """Test an API instance with the specified parameters and save results to files."""
+def test_api(
+    api_instance, 
+    api_name, 
+    search_term, 
+    start_date: str = None, 
+    end_date: str = None, 
+    range_str: str = None, 
+    verbose: bool = True, 
+    save_files: bool = False
+):
+    """Test an API instance with the specified parameters and save results to files.
+    
+    Args:
+        api_instance: The API instance to test
+        api_name: Name of the API being tested
+        search_term: Search term(s) to test
+        start_date: Start date for the search (optional)
+        end_date: End date for the search (optional)
+        range_str: Date range string (optional, alternative to start_date/end_date)
+        verbose: Whether to print verbose output
+        save_files: Whether to save results to files
+    """
     print(f"\n{'='*50}")
     print(f"Testing {api_name}")
     print(f"{'='*50}")
@@ -26,6 +46,7 @@ def test_api(api_instance, api_name, start_date, end_date, search_term, verbose:
         search_term=search_term,
         start=start_date if start_date else None,
         end=end_date if end_date else None,
+        range_str=range_str if range_str else None,
         verbose=verbose
     )
     raw_data = api_instance.raw_data
@@ -74,11 +95,44 @@ def main():
     # Actually this is just a test, so we'll set it to True for now.
     #verbose = config.get('verbose', False)
     verbose = True
-    save_files = False
+    save_files = True
     
     tor_control_password = config.get('tor', {}).get('control_password')
 
+    # ranges for testing sub-daily granularity
+    #range_str = "2024-01-01T00 2024-01-01T04" # 4 hours
+    # range_str = "2024-01-01T00 2024-01-01T05" # 5 hours
+    range_str = "2024-01-01T00 2024-01-02T11" # 35 hours
+    # range_str = "2024-01-01T00 2024-01-02T12" # 36 hours
+    # range_str = "2024-01-01T00 2024-01-03T23" # 71 hours
+    # range_str = "2024-01-01T00 2024-01-04T00" # 72 hours
+    # range_str = "2024-01-01T00 2024-01-07T23" # 191 hours
+    # range_str = "2024-01-01T00 2024-01-08T00" # 192 hours
+    # range_str = "2024-01-01T00 2024-01-09T23" # 263 hours
+    # range_str = "2024-01-01T00 2024-01-10T00" # 264 hours
+    # range_str = "2024-01-01T00 2024-01-11T23" # 335 hours
+    # range_str = "2024-01-01 2024-01-11T23" # 335 hours
+    
+    # ranges for testing daily granularity
+    # range_str = "2024-01-01 2024-01-01" # 1 day
+    # range_str = "2024-01-01 2024-01-02" # 2 days
+    # range_str = "2024-01-01 2024-01-03" # 3 days
+    # range_str = "2024-01-01 2024-01-07" # 7 days
+    # range_str = "2024-01-01 2024-01-08" # 8 days
+    # range_str = "2024-01-01 2024-01-09" # 9 days
+    # range_str = "2024-01-01 2024-01-10" # 10 days (this one gives 10 output records maybe)
+    # range_str = "2024-01-01 2024-01-30" # 30 days
+    # range_str = "2024-01-01 2024-01-31" # 31 days
+    # range_str = "2024-01-01 2024-02-01" # 31 days
+    # range_str = "2024-01-01 2024-02-02" # 32 days
+    # range_str = "2024-01-01 2024-02-03" # 33 days
+
+    #range_start = "2024-01-01"
+    #range_end = "2024-01-01"
+
+
     start_date = "2024-01-01"
+    #end_date = "2024-01-01" # 1 day, gives very short daily granularity
     #end_date = "2024-01-09" # 9 days, gives very short daily granularity
     end_date = "2024-01-30" # 30 days, gives daily granularity
     #end_date = "2024-01-07" # 6 days, gives hourly granularity
@@ -101,13 +155,13 @@ def main():
         #{"name": "SerpApi", "instance": None, "search_term": "coffee,tea"},
         #{"name": "Serpwow", "instance": None, "search_term": "coffee,tea"},
         #{"name": "SearchApi", "instance": None, "search_term": "coffee,tea"},
-        #{"name": "ApplescriptSafari", "instance": None, "search_term": "coffee,tea"},
+        {"name": "ApplescriptSafari", "instance": None, "search_term": "coffee,tea"},
         #{"name": "Brightdata", "instance": None, "search_term": "coffee,tea"},
         #{"name": "Scrapingdog", "instance": None, "search_term": "coffee,tea"},
         #{"name": "Decodo", "instance": None, "search_term": "coffee,tea"},
         #{"name": "ApplescriptSafari", "instance": None, "search_term": "car,truck"},
         #{"name": "TrendsPy", "instance": None, "search_term": "coffee,tea"},
-        {"name": "DummyApi", "instance": None, "search_term": "coffee,tea"}
+        #{"name": "DummyApi", "instance": None, "search_term": "coffee,tea"}
     ]
 
     # Create API instances
@@ -124,7 +178,10 @@ def main():
     # Test each API
     for api in apis:
         print(f"Testing {api['name']} with search term: {api['search_term']}")
-        test_api(api["instance"], api["name"], start_date, end_date, api["search_term"], verbose, save_files)
+        # use this one for start_date/end_date  
+        #test_api(api["instance"], api["name"], api["search_term"], start_date=start_date, end_date=end_date, verbose=verbose, save_files=save_files)
+        # use this one for range_str
+        test_api(api["instance"], api["name"], api["search_term"], range_str=range_str, verbose=verbose, save_files=save_files)
 
     # Close all Safari tabs if we've tested ApplescriptSafari
     for api in apis:

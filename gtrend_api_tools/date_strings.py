@@ -1,6 +1,7 @@
 import re
 from datetime import datetime, timezone
 from dateutil.parser import parse
+from typing import Union
 
 # default datetime object for parser is january 1 of current year and has hour zero
 CURRENT_DEFAULT_DT = datetime.now(timezone.utc).replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
@@ -226,12 +227,14 @@ def split_date_range_str(date_str: str) -> tuple:
     end_date = None
     return start_date, end_date 
 
-def standardize_date_format(date_str: str) -> str:
+def standardize_date_format(date_str: Union[str, datetime]) -> str:
     """
     Standardize the date format to YYYY-MM-DD.
     """
-    cleaned_date_str = cleanup_date_str(date_str)
-    date_dt = parse_date_str(cleaned_date_str)
+    if isinstance(date_str, datetime):
+        date_dt = date_str
+    else:
+        date_dt = parse_date_str(cleanup_date_str(date_str))
     return date_dt.strftime("%Y-%m-%dT%H:%M:%S")
 
 def standardize_date_range_start(date_str: str) -> str:

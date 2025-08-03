@@ -101,6 +101,9 @@ class DateRange:
         self.last_index_dt: datetime
         self.end_dt: datetime
         self.period_index: pd.PeriodIndex
+        self.datetime_index: pd.DatetimeIndex
+        self.extended_period_index: pd.PeriodIndex
+        self.extended_datetime_index: pd.DatetimeIndex
         self.num_periods: int
         self.duration: timedelta
         self.str: SimpleNamespace = SimpleNamespace()
@@ -137,7 +140,8 @@ class DateRange:
                 raise ValueError(f"{self.__class__.__name__} does not accept the arguments `start`, and `end` when `range_str` is provided")
         else:
             if start is None or end is None:
-                raise ValueError(f"{self.__class__.__name__} requires the arguments `start` and `end` when `range_str` is not provided")
+                if periods is None:
+                    raise ValueError(f"{self.__class__.__name__} requires the arguments `start` and `end` or `periods` when `range_str` is not provided")
         # If we got a range_str, parse it into start_date and end_date.
         # This takes precedence over start_date and end_date.
         parse_errors = ''
@@ -175,6 +179,10 @@ class DateRange:
             self.original_start_dt = start
         elif start is not None:
             parse_errors += f"invalid start: {start} "
+        elif start is None:
+            self.original_start_dt = None
+        else:
+            parse_errors += f"invalid start: {start} "
 
         if isinstance(end, str):
             self.original_end_str = end
@@ -185,6 +193,10 @@ class DateRange:
             self.original_end_dt = end
         elif end is not None:
             parse_errors += f"invalid end: {end}"
+        elif end is None:
+            self.original_end_dt = None
+        else:
+            parse_errors += f"invalid end: {end} "
 
         if parse_errors:
             raise ValueError(f"Cannot initialize DateRange with given inputs: {parse_errors}")

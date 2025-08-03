@@ -11,9 +11,10 @@ from gtrend_api_tools.APIs.base_classes import API_Call, TrendSearchResult, Tren
 import pandas as pd
 from gtrend_api_tools.utils import _print_if_verbose
 from gtrend_api_tools.search_specs import DateRange, GtrendDateRange
-from gtrend_api_tools.date_strings import cleanup_date_str, standardize_date_range_start
+from gtrend_api_tools.date_strings import cleanup_date_str, standardize_date_range_start, split_date_range_str, standardize_date_format
 import json
 import unicodedata
+from dateparser import parse
 
 
 class AuthenticationError(Exception):
@@ -68,7 +69,7 @@ class GoogleAuthSession:
     def __init__(
         self,
         safari_instance: 'ApplescriptSafari',
-        poll_max_tries: int = 3,
+        poll_max_tries: int = 5,
         poll_wait_time: int = 1,
         print_func: Optional[Callable] = None,
         auth_email: Optional[str] = None
@@ -180,7 +181,7 @@ class ApplescriptSafari(API_Call):
         self,
         auth_email: Optional[str] = CONFIRM_CONFIGS['google_auth_choose']['auth_email'],
         close_tabs: bool = False,
-        poll_max_tries: int = 3,
+        poll_max_tries: int = 5,
         poll_wait_time: int = 1,
         api_endpoint: Optional[str] = None,
         **kwargs
@@ -227,6 +228,9 @@ class ApplescriptSafari(API_Call):
         # Get the processed search spec for dates
         spec = internal_state.search_spec
         
+        # Record the start time of the search (including the auth if that's needed this time)
+        internal_state.search_result.set_send_timestamp()
+
         # Create auth session if it doesn't exist
         if self._auth_session is None:
             self.print_func("Creating new GoogleAuthSession")
@@ -261,7 +265,9 @@ class ApplescriptSafari(API_Call):
             raise Exception("Failed to parse trends page")
 
         internal_state.search_result.raw_data = raw_data
-        
+
+        # Record the end time of the search
+        internal_state.search_result.set_receive_timestamp()
         self.print_func("Search successful!")
         
         # Close tab if configured to do so
@@ -301,6 +307,13 @@ class ApplescriptSafari(API_Call):
         # search_terms = terms[1:]
         # self.print_func(f"Trends page search terms: {search_terms}")
 
+        print(raw_data)
+
+        # Get the real date range from the raw data
+        date_range_str = raw_data['date_range_text']
+        start_date, end_date = split_date_range_str(date_range_str)
+
+
         # Get the search terms from the page title
         search_terms = raw_data['page_title_text'].split(' - ')[0].split(',')
         search_terms = [term.strip() for term in search_terms]
@@ -326,6 +339,11 @@ class ApplescriptSafari(API_Call):
         # Get all rows
         tbody = table.find('tbody')
         rows = tbody.find_all('tr')
+
+        # now that we know the right number, we can make a date range object
+        date_range = DateRange(start=start_date, freq=self.internal_state.search_spec.freq, periods=len(rows), resolution="m")
+        self.print_func(f"Parsed date range with DateRange: {repr(date_range)}")
+        
         # Sanity check that the number of rows is the same as the number of dates in the date range
         #if len(rows) != len(date_range.datetime_str_list_ymd):
         #    raise ValueError(f"Number of rows in table ({len(rows)}) does not match number of dates in date range ({len(date_range.datetime_str_list_ymd)})")
@@ -347,8 +365,21 @@ class ApplescriptSafari(API_Call):
             date_str = cells[0].text.strip()
             raw_date_list.append(date_str)
             standardized_date_str = standardize_date_range_start(date_str)
-            #raw_date_list.append(date_range.datetime_str_list_ymd[i])
-                
+
+            # Sanity check that the date matches the one from the date range
+            current_index_datetime = date_range.datetime_index[i]
+            standardized_index_date_str = standardize_date_format(current_index_datetime)
+            
+            
+            # Create datetime object from standardized_date_str and check components
+            standardized_datetime = parse(standardized_date_str)
+            # Check that days, hours, and minutes are equal
+            # We don't check the year because we already know it's broken in the table, which is why we have to do all this anyway.
+            if (standardized_datetime.day != current_index_datetime.day or 
+                standardized_datetime.hour != current_index_datetime.hour or 
+                standardized_datetime.minute != current_index_datetime.minute):
+                self.print_func(f"DateTime component mismatch in row {i}: standardized={standardized_datetime}, current={current_index_datetime}")
+
             # Get values for each column (except the date column)
             values = []
             for j, cell in enumerate(cells[1:], 1):
@@ -366,7 +397,8 @@ class ApplescriptSafari(API_Call):
             if values:  # Only add entries that have valid values
                 standardized_entry = {
                     #'date': date_range.datetime_str_list_ymd[i],
-                    'date': standardized_date_str,
+                    #'date': standardized_date_str,
+                    'date': standardized_index_date_str,
                     'values': values
                 }
                 data.append(standardized_entry)

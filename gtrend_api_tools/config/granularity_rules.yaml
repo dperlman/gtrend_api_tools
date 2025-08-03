@@ -2,8 +2,8 @@ granularity_rules:
   m:
     name: "one-minute"
     freq: "min"
-    limit_units: "min"
-    limit_value: 4
+    #limit_units: "min"
+    #limit_value: 4
     search_resolution: "h"
     result_resolution: "m"
     fixed: True
@@ -12,8 +12,8 @@ granularity_rules:
   e:
     name: "eight-minute"
     freq: "8min"
-    limit_units: "8min"
-    limit_value: 35
+    #limit_units: "8min"
+    #limit_value: 35
     search_resolution: "h"
     result_resolution: "m"
     fixed: True
@@ -22,8 +22,8 @@ granularity_rules:
   n:
     name: "sixteen-minute"
     freq: "16min"
-    limit_units: "16min"
-    limit_value: 71
+    #limit_units: "16min"
+    #limit_value: 71
     search_resolution: "h"
     result_resolution: "m"
     fixed: True

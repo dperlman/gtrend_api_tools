@@ -5,10 +5,11 @@ This test file validates that the API returns the correct number of rows and col
 """
 import pytest
 from datetime import datetime
+from dateparser import parse
 
-API_TO_TEST = 'scrapingdog'
+API_TO_TEST = 'applescript_safari'
 
-@pytest.mark.parametrize('api_key,api_instance', [(API_TO_TEST, API_TO_TEST)], indirect=True)
+@pytest.mark.parametrize('api_instance', [API_TO_TEST], indirect=True)
 class TestAPIGranularityDetection:
     """Test class for granularity detection using API instance and fixture data."""
     
@@ -23,6 +24,15 @@ class TestAPIGranularityDetection:
         
         # Run the search
         api_instance.search(search_term=term_list, start=start_date, end=end_date)
+
+        # Check the search result timestamps
+        range_first_timestamp = parse(api_instance.search_result.data[0]['date'], settings={'TIMEZONE': 'UTC'}  )
+        range_last_timestamp = parse(api_instance.search_result.data[-1]['date'], settings={'TIMEZONE': 'UTC'})
+        assert range_first_timestamp < range_last_timestamp, f"Start timestamp is not before end timestamp for test '{test_name}'"
+        assert range_first_timestamp is not None, f"Start timestamp is None for test '{test_name}'"
+        assert range_last_timestamp is not None, f"End timestamp is None for test '{test_name}'"
+
+        # Get the dataframe
         df = api_instance.dataframe
         
         

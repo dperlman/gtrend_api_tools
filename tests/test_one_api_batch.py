@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from gtrend_api_tools.search_specs import SearchSpec
 
 # Configure which API to test - change this to test different APIs
-API_TO_TEST = 'dummy_api'
+API_TO_TEST = 'decodo'
 BATCH_METHOD = "thread"  # options are 'thread' or 'sequential'
 MAX_WORKERS = 10
 NUMBER_OF_SPECS = 10
@@ -169,10 +169,10 @@ def test_variable_batch_size(api_instance, spec_list):
     )
     print(f"✅ Batch search executed successfully with method '{BATCH_METHOD}' and {MAX_WORKERS} workers")
     
-    # Get results from the API's history
-    # results = api_instance.search_result_history
-    # errors = api_instance.search_error_history
-    
+    for result in results:
+        print(result.search_spec.term_string)
+        print(result.data[:1000])
+
     print(f"\n📊 Analyzing results...")
     
     # Check that we got the expected number of results

@@ -45,15 +45,12 @@ class TestGranularityDetection:
         assert 'granularity' in result
         assert 'name' in result
         assert 'freq' in result
-        assert 'max_records' in result
-        assert 'max_hours' in result
-        assert 'max_days' in result
-        assert 'max_inclusive' in result
         assert 'search_resolution' in result
         assert 'result_resolution' in result
         assert 'fixed' in result
         assert 'record_seconds' in result
-        
+        assert 'max_records' in result
+        assert 'record_seconds' in result
 
 
 class TestGranularityBoundaryConditions:

@@ -1,8 +1,10 @@
+import json
 import pytest
 from datetime import datetime, timezone
 from dateparser import parse
+from datetime import datetime
 
-API_TO_TEST = 'dummy_api'
+API_TO_TEST = 'applescript_safari'
 
 @pytest.mark.parametrize('api_instance', [API_TO_TEST], indirect=True)
 def test_api_search_history(api_instance, test_terms, test_dates):
@@ -105,10 +107,30 @@ def test_api_multiple_terms(api_instance, test_terms, test_dates):
 
     assert hasattr(api_instance, 'search_result')
     assert hasattr(api_instance.search_result, 'search_spec')
-
+    
+    # This block was for troubleshooting when an api was only outputting one term per entry.
+    # print(f"api_instance.data: {api_instance.data[:1000]}")
+    # current_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    # term_string = api_instance.search_spec.term_string
+    # data_save_file = f"test_outputs/{API_TO_TEST}_{term_string.replace(' ', '_')}_{current_time}_rawdata.json"
+    # with open(data_save_file, 'w') as f:
+    #     json.dump(api_instance.raw_data, f)
+    # data_save_file = f"test_outputs/{API_TO_TEST}_{term_string.replace(' ', '_')}_{current_time}_data.json"
+    # with open(data_save_file, 'w') as f:
+    #     json.dump(api_instance.data, f)
+    
     # Check standardized data structure
     assert api_instance.data
     assert len(api_instance.data) > 1
+
+    # This block was for troubleshooting when an api was only outputting one term per entry.
+    # print(f"len(search_term): {len(search_term)}")
+    # for entry in api_instance.data:
+    #     print(f"len(entry['values']): {len(entry['values'])}")
+    #     if len(entry['values']) != len(search_term):
+    #         print(f"entry['values']: {entry['values']}")
+    #         print(f"search_term: {search_term}")
+
     assert all(len(entry['values']) == len(search_term) for entry in api_instance.data)  # All terms per entry
     # Check that all search terms are present in each entry
     for entry in api_instance.data:
