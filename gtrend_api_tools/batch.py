@@ -7,7 +7,8 @@ from typing import Union, List, Dict, Any, Optional
 from types import SimpleNamespace
 from gtrend_api_tools.search_specs import SearchSpec
 from gtrend_api_tools.APIs.base_classes import API_Call, TrendSearchResult
-from gtrend_api_tools.utils import load_config
+from gtrend_api_tools.utils import load_config, DEFAULT_MAX_WORKERS
+from gtrend_api_tools.api_utils import get_api_class
 
 
 class CompoundBatch:
@@ -21,7 +22,9 @@ class CompoundBatch:
         self,
         compound_spec_list: List[List[SearchSpec]],
         method: str = "simple",
-        max_workers: int = 10
+        max_workers: int = DEFAULT_MAX_WORKERS,
+        verbose: bool = False,
+        **kwargs
     ):
         """
         Initialize the CompoundBatch.
@@ -30,12 +33,16 @@ class CompoundBatch:
             compound_spec_list (List[List[SearchSpec]]): List of lists of SearchSpec objects
             method (str): The execution method to use
             max_workers (int): Maximum number of workers for concurrent execution
+            verbose (bool): Whether to enable verbose output
+            **kwargs: Additional arguments to pass to API instances (api_key, tor_control_password, etc.)
         """
         self.compound_spec_list = compound_spec_list
         self.method = method
         self.max_workers = max_workers
+        self.verbose = verbose
         self.config = load_config()
-        self.batch_config_list = self.validate_spec_list()
+        self.api_kwargs = kwargs
+        self.make_state_lists()
         
         # Create compound_result_list with the same shape as compound_spec_list
         # Fill each element with an empty TrendSearchResult() instance
@@ -46,58 +53,74 @@ class CompoundBatch:
                 inner_result_list.append(TrendSearchResult())
             self.compound_result_list.append(inner_result_list)
     
-    def validate_spec_list(self) -> List[Dict[str, Any]]:
+    def make_state_lists(self) -> None:
         """
-        Validate the spec_list.
+        Create state containers from search specs and organize them by API.
         
-        For each inner list, ensures that every SearchSpec has the same .api property.
-        Different sub-lists can have different .api properties.
+        Creates three data structures:
+        1. self.compound_state_list: List-of-lists with same shape as compound_spec_list
+        2. self.batches_by_api: Dict mapping API names to lists of TrendSearchContainer objects
+        3. self.api_instances: List of API instances, one for each unique API encountered
         
-        Returns:
-            List[Dict[str, Any]]: List of dictionaries with 'api' and 'max_workers' keys
+        Each TrendSearchContainer instance is stored in both structures for easy access.
         """
-        batch_configs = []
+        # Initialize the output structures
+        self.compound_state_list = []
+        self.batches_by_api = {}
+        self.api_instances = []
+        api_instance_map = {}  # Map API names to their instances
         
-        for i, inner_list in enumerate(self.compound_spec_list):
-            if not inner_list:
+        # Loop through each inner list in compound_spec_list
+        for i, inner_spec_list in enumerate(self.compound_spec_list):
+            if not inner_spec_list:
                 raise ValueError(f"Compound spec list[{i}] is empty")
             
-            # Get the api from the first SearchSpec in this inner list
-            first_api = inner_list[0].api
-            
-            # Check that all SearchSpecs in this inner list have the same api
-            api_mismatch = False
-            for j, spec in enumerate(inner_list):
+            # Validate that all specs in this inner list are SearchSpec objects
+            for j, spec in enumerate(inner_spec_list):
                 if not isinstance(spec, SearchSpec):
                     raise ValueError(f"Compound spec list[{i}][{j}] is not a SearchSpec: {type(spec)}")
+            
+            # Create state containers for this inner list
+            inner_state_list = []
+            for spec in inner_spec_list:
+                api_name = spec.api
                 
-                if spec.api != first_api:
-                    api_mismatch = True
-                    break
+                # Create API instance if we haven't seen this API before
+                if api_name not in api_instance_map:
+                    api_class = get_api_class(api_name, self.config)
+                    
+                    # Get API-specific key from config
+                    api_key = self.config.get('api_keys', {}).get(api_name.lower())
+                    
+                    # Get tor_control_password from config
+                    tor_control_password = self.config.get('tor', {}).get('control_password')
+                    
+                    # Prepare kwargs for this API instance
+                    instance_kwargs = self.api_kwargs.copy()
+                    instance_kwargs['verbose'] = self.verbose
+                    
+                    # Add API-specific parameters
+                    if api_key:
+                        instance_kwargs['api_key'] = api_key
+                    if tor_control_password:
+                        instance_kwargs['tor_control_password'] = tor_control_password
+                    
+                    api_instance = api_class(**instance_kwargs)
+                    api_instance_map[api_name] = api_instance
+                    self.api_instances.append(api_instance)
+                
+                # Use the appropriate API instance to create the state container
+                api_instance = api_instance_map[api_name]
+                state_container = api_instance.make_search_state_container(spec)
+                inner_state_list.append(state_container)
+                
+                # Add to batches_by_api
+                if api_name not in self.batches_by_api:
+                    self.batches_by_api[api_name] = []
+                self.batches_by_api[api_name].append(state_container)
             
-            # Use None if there's an API mismatch, otherwise use the first API
-            api_value = None if api_mismatch else first_api
-            
-            # Determine max_workers for this API
-            if self.max_workers is not None:
-                max_workers = self.max_workers
-            else:
-                # Get from config if API is valid, otherwise use a default
-                if api_value is not None:
-                    try:
-                        max_workers = self.config['available_apis'][api_value]['default_concurrency']
-                    except KeyError:
-                        raise ValueError(f"API '{api_value}' not found in config or missing 'default_concurrency' setting")
-                else:
-                    # Use a default value when API is None
-                    max_workers = self.max_workers
-            
-            batch_configs.append({
-                'api': api_value,
-                'max_workers': max_workers
-            })
-        
-        return batch_configs
+            # Add the inner state list to compound_state_list
+            self.compound_state_list.append(inner_state_list)
 
 
 class TrendSearchBatch:
@@ -113,7 +136,7 @@ class TrendSearchBatch:
         main_spec: SearchSpec,
         spec_list: Union[List[SearchSpec], List[Dict[str, Any]], List[SimpleNamespace]],
         method: str = "iterate",
-        max_workers: int = 10
+        max_workers: int = DEFAULT_MAX_WORKERS
     ):
         """
         Initialize the TrendSearchBatch.

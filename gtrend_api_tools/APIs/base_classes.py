@@ -3,7 +3,7 @@ from datetime import datetime, timezone, timedelta
 import pandas as pd
 import inspect
 import threading
-from gtrend_api_tools.utils import _print_if_verbose, load_config
+from gtrend_api_tools.utils import _print_if_verbose, load_config, DEFAULT_MAX_WORKERS
 from gtrend_api_tools.api_utils import standard_dict_to_df, api_string
 from gtrend_api_tools.search_specs import DateRange, SearchSpec
 import requests
@@ -331,12 +331,13 @@ class API_Call:
         self.api_string = self._api_string(self.config)
         self.emulate_api = emulate_api or self.api_string # if we are not emulating an API, we use the actual API string
         self.kwargs = kwargs
-        self._search_spec_history: List[SearchSpec] = []
+        # History tracking
+        self._history_lock = threading.Lock()
         self._internal_state_history: List[TrendSearchContainer] = []
-        self._search_result_history: List[TrendSearchResult] = []
-        self._search_error_history: List[TrendSearchErrorStatus] = []
-        self._date_range: Optional[DateRange] = None
-        self._history_lock: threading.Lock = threading.Lock()
+        
+        # Batch processing state
+        self._batch_history_index: int = 0
+        self._batch_num_results: int = 0
 
         # Create a closure that captures self.verbose
         def make_print_func(verbose: bool) -> PrintFunction:
@@ -385,10 +386,29 @@ class API_Call:
         self,
         search_spec_list: List[SearchSpec],
         method: str = 'thread',
-        max_workers: int = 10
+        max_workers: int = DEFAULT_MAX_WORKERS
     ) -> Tuple[List[TrendSearchResult], List[TrendSearchErrorStatus]]:
         """
-        Execute multiple Google Trends searches in batch.
+        Execute multiple Google Trends searches in batch. This should be thread-safe internally.
+        This method itself is not thread-safe, but the internal state is.
+        The workflow here is to make the state containers, set up the batch, and then execute the batch.
+        The state containers is just a list of state objects that contain the search spec, and a new empty result and error object.
+        Setting up the batch fills in a lot of the internal state, including the base trends request, request headers, request params, request data, request, prepared request, and request url.
+        None of these parts done by setup_batch require any API calls or other IO and they are all completely self-contained and internally thread safe.
+        The last part, execute_batch, is the only part that requires API calls and other IO.
+
+        So, the workflow to set up a batch externally (which we do in the batch.py file) is:
+        1. Make the state containers from your own list of search specs
+        2. Run setup_batch on your own list
+        3. Execute the batch on your list
+
+        After doing that, the state of this instance will be exactly the same as if you ran it using this search_batch method,
+        but you will own a state list in your own code which now contains the results and errors.
+        
+
+        The workflow to execute a batch internally (which we do in the batch.py file) is:
+        1. Make the state containers
+        2. Set up the batch
         
         Args:
             search_spec_list (List[SearchSpec]): List of search specifications to execute
@@ -405,10 +425,10 @@ class API_Call:
         state_container_list = self.make_state_container_list(search_spec_list)
         
         # Set up the batch
-        self._setup_batch(state_container_list)
+        self.setup_batch(state_container_list)
         
         # Execute the batch
-        search_result_list, search_error_list = self._execute_batch(state_container_list, method, max_workers)
+        search_result_list, search_error_list = self.execute_batch(state_container_list, method, max_workers)
         return search_result_list, search_error_list
 
     def make_state_container_list(self, search_spec_list: List[SearchSpec]) -> List[TrendSearchContainer]:
@@ -417,25 +437,31 @@ class API_Call:
         """
         return [self.make_search_state_container(search_spec) for search_spec in search_spec_list]
     
-    def _setup_batch(self, state_container_list: List[TrendSearchContainer]) -> None:
+    def setup_batch(self, state_container_list: List[TrendSearchContainer]) -> None:
         """
         Set up the batch search by preparing internal states and initializing history.
         
+        This method prepares the batch for execution by:
+        1. Setting the batch history index to track results
+        2. Initializing the history with the provided state containers
+        
         Args:
-            search_spec_list (List[SearchSpec]): List of search specifications to execute
+            state_container_list (List[TrendSearchContainer]): List of state containers to set up for batch execution
         """
         # Get the history index that we are starting from
         # We use this at the end to return the right number of results, in case this instance was already used before this!
-        self._batch_history_index = len(self._search_spec_history)
+        self._batch_history_index = len(self._internal_state_history)
         self._batch_num_results = len(state_container_list)
         
         # Set up the internal states for each search spec
         # It won't take long to do this because it does not involve any API calls or other IO.
-        self._batch_internal_state_list = state_container_list # Do we even need this?????
+        #self._batch_internal_state_list = state_container_list # Do we even need this?????
         # This will initialize all the history lists atomically because of the internal locks in the _initialize_history method.
-        self._initialize_history(self._batch_internal_state_list)
+        #self._initialize_history(self._batch_internal_state_list)
+        self._initialize_history(state_container_list)
 
-    def _execute_batch(self, batch_internal_state_list: List[TrendSearchContainer], method: str = 'thread', max_workers: int = 10) -> Tuple[List[TrendSearchResult], List[TrendSearchErrorStatus]]:
+
+    def execute_batch(self, batch_internal_state_list: List[TrendSearchContainer], method: str = 'thread', max_workers: int = DEFAULT_MAX_WORKERS) -> Tuple[List[TrendSearchResult], List[TrendSearchErrorStatus]]:
         """
         Execute the batch search using the prepared internal states.
         
@@ -460,8 +486,9 @@ class API_Call:
 
         # Return the right number of results
         # This is to make sure that we return the right number of results, in case this instance was already used before this!
-        search_result_list = self._search_result_history[self._batch_history_index:self._batch_history_index+self._batch_num_results]
-        search_error_list = self._search_error_history[self._batch_history_index:self._batch_history_index+self._batch_num_results]
+        state_list = self._internal_state_history[self._batch_history_index:self._batch_history_index+self._batch_num_results]
+        search_result_list = [s.search_result for s in state_list]
+        search_error_list = [s.search_error for s in state_list]
         return search_result_list, search_error_list
 
 
@@ -623,18 +650,7 @@ class API_Call:
         Args:
             state_list (List[TrendSearchContainer]): List of internal states to add to history
         """
-        spec_list = []
-        result_list = []
-        error_list = []
-        for state in state_list:
-            spec_list.append(state.search_spec)
-            result_list.append(state.search_result)
-            error_list.append(state.search_error)
-
         with self._history_lock:
-            self._search_spec_history.extend(spec_list)
-            self._search_result_history.extend(result_list)
-            self._search_error_history.extend(error_list)
             self._internal_state_history.extend(state_list)
         
         return
@@ -850,7 +866,6 @@ class API_Call:
             raise ValueError("No search has been performed yet. Call search() first.") from e
 
 
-
     @property
     def search_spec(self) -> SearchSpec:
         """
@@ -863,20 +878,10 @@ class API_Call:
             ValueError: If no search specification is available
         """
         with self._history_lock:
-            if not self._search_spec_history:
+            if not self._internal_state_history:
                 raise ValueError("No search specification available. Call search() first.")
-            return self._search_spec_history[-1]
+            return self._internal_state_history[-1].search_spec
 
-    @search_spec.setter
-    def search_spec(self, spec: SearchSpec) -> None:
-        """
-        Set the current search specification and append it to the history.
-        
-        Args:
-            spec (SearchSpec): Search specification to set
-        """
-        with self._history_lock:
-            self._search_spec_history.append(spec)
 
     @property
     def internal_state(self) -> TrendSearchContainer:
@@ -917,20 +922,11 @@ class API_Call:
             ValueError: If no search result is available
         """
         with self._history_lock:
-            if not self._search_result_history:
+            if not self._internal_state_history:
                 raise ValueError("No search result available. Call search() first.")
-            return self._search_result_history[-1]
+            return self._internal_state_history[-1].search_result
 
-    @search_result.setter
-    def search_result(self, result: TrendSearchResult) -> None:
-        """
-        Set the current search result and append it to the history.
-        
-        Args:
-            result (TrendSearchResult): Search result to set
-        """
-        with self._history_lock:
-            self._search_result_history.append(result)
+
 
     @property
     def search_error(self) -> Optional[TrendSearchErrorStatus]:
@@ -944,20 +940,11 @@ class API_Call:
             ValueError: If no search error status is available
         """
         with self._history_lock:
-            if not self._search_error_history:
+            if not self._internal_state_history:
                 raise ValueError("No search error status available. Call search() first.")
-            return self._search_error_history[-1]
+            return self._internal_state_history[-1].search_error
 
-    @search_error.setter
-    def search_error(self, error_status: TrendSearchErrorStatus) -> None:
-        """
-        Set the current search error status and append it to the history.
-        
-        Args:
-            error_status (TrendSearchErrorStatus): Search error status to set
-        """
-        with self._history_lock:
-            self._search_error_history.append(error_status)
+
 
     @property
     def search_spec_history(self) -> List[SearchSpec]:
@@ -968,7 +955,7 @@ class API_Call:
             List[SearchSpec]: List of all search specification entries
         """
         with self._history_lock:
-            return self._search_spec_history.copy()
+            return [state.search_spec for state in self._internal_state_history]
 
     @property
     def internal_state_history(self) -> List[TrendSearchContainer]:
@@ -990,7 +977,7 @@ class API_Call:
             List[TrendSearchResult]: List of all search result entries
         """
         with self._history_lock:
-            return self._search_result_history.copy()
+            return [s.search_result for s in self._internal_state_history]
 
     @property
     def search_error_history(self) -> List[TrendSearchErrorStatus]:
@@ -1001,7 +988,7 @@ class API_Call:
             List[TrendSearchErrorStatus]: List of error information for previous searches
         """
         with self._history_lock:
-            return self._search_error_history.copy()
+            return [s.search_error for s in self._internal_state_history]
 
 
     
@@ -1063,12 +1050,12 @@ class API_Call:
     #         self._internal_state_history.extend([None] * len(spec_list))
         
     #     # Execute batch with index-aware updates
-    #     self._execute_batch_internal(spec_list, max_workers, start_idx)
+    #     self.execute_batch_internal(spec_list, max_workers, start_idx)
         
     #     # Return the results from this batch
     #     return self._search_result_history[start_idx:]
     
-    # def _execute_batch_internal(self, spec_list: List[SearchSpec], max_workers: int, start_idx: int) -> None:
+    # def execute_batch_internal(self, spec_list: List[SearchSpec], max_workers: int, start_idx: int) -> None:
     #     """
     #     Internal method that handles the actual threaded execution.
         

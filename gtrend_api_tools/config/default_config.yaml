@@ -14,6 +14,7 @@ tor:
 api_parameters:
   all:
     max_terms: 5
+    default_max_workers: 10
 
 available_apis:
   trendspy:

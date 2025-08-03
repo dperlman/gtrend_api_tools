@@ -94,6 +94,364 @@ def load_config() -> dict:
     
     return config
 
+def _print_if_verbose(message: str, verbose: bool = False) -> None:
+    """
+    Print message only if verbose is True, prefixed with the caller's function name and its caller.
+    If the caller is _print, uses the caller of _print instead.
+    Only prints the caller names if they have changed from the last call.
+    
+    Args:
+        message (str): The message to print
+        verbose (bool): Whether to print the message
+    """
+    if verbose:
+        import inspect
+        
+        # Initialize the last caller attributes if they don't exist
+        if not hasattr(_print_if_verbose, 'last_caller'):
+            _print_if_verbose.last_caller = None
+        if not hasattr(_print_if_verbose, 'last_caller_caller'):
+            _print_if_verbose.last_caller_caller = None
+        
+        # Get the caller's frame info
+        caller = inspect.currentframe().f_back
+        # Get the caller's function name
+        caller_name = caller.f_code.co_name
+        
+        # If the caller is _print, get the caller of _print instead
+        if caller_name == '_print':
+            caller = caller.f_back
+            caller_name = caller.f_code.co_name
+        
+        # Get the caller's caller
+        caller_caller = caller.f_back
+        caller_caller_name = caller_caller.f_code.co_name if caller_caller else "unknown"
+        
+        # Only print the caller names if they have changed
+        if caller_name != _print_if_verbose.last_caller or caller_caller_name != _print_if_verbose.last_caller_caller:
+            _print_if_verbose(f"\n[{caller_caller_name}] / [{caller_name}]")
+            _print_if_verbose.last_caller = caller_name
+            _print_if_verbose.last_caller_caller = caller_caller_name
+            
+        # Print the message
+        print(message)
+
+
+# Load config once at module level and extract common values.
+# (We do this here instead of at the top because we need to define two functions first.)
+_CONFIG = load_config()
+DEFAULT_MAX_WORKERS = _CONFIG.get('api_parameters', {}).get('all', {}).get('default_max_workers', 10)
+
+
+
+def _custom_mode(df: pd.DataFrame, axis: int = 1) -> pd.Series:
+    """
+    Calculate mode of a DataFrame, returning mean of modes if multiple exist.
+    
+    Args:
+        df (pd.DataFrame): Input DataFrame
+        axis (int): Axis along which to calculate mode (0 for columns, 1 for rows)
+        
+    Returns:
+        pd.Series: Series containing mode values (or mean of modes if multiple exist)
+    """
+    # Get modes using pandas mode()
+    modes = df.mode(axis=axis)
+    # Calculate mean of modes along the same axis
+    return modes.mean(axis=axis)
+
+def _numbered_file_name(orig_name: str, n_digits: int = 3, path: Optional[str] = None) -> str:
+    """
+    Generate a numbered filename by finding the next available number in the directory.
+    If filename ends with _i### pattern, use the next available number. If no number pattern exists,
+    add _i### pattern with specified digits. Number of digits is enforced in both cases.
+    
+    Args:
+        orig_name (str): The original filename
+        n_digits (int): Number of digits to use for the counter. Defaults to 3
+        path (str, optional): Directory path to search for existing files. Defaults to None (current directory)
+        
+    Returns:
+        str: New filename with the next available number
+    """
+    # Split the filename into base name and extension
+    base_name, ext = os.path.splitext(orig_name)
+    
+    # Remove any existing _i### pattern to get the base name
+    base_name = re.sub(r'_i\d+$', '', base_name)
+    
+    # Get all files in the specified directory
+    search_path = path if path else '.'
+    existing_files = [f for f in os.listdir(search_path) if os.path.isfile(os.path.join(search_path, f))]
+    
+    # Find the highest existing number
+    max_number = 0
+    pattern = re.compile(f"{base_name}_i(\\d+){ext}$")
+    
+    for file in existing_files:
+        match = pattern.match(file)
+        if match:
+            number = int(match.group(1))
+            max_number = max(max_number, number)
+    
+    # Use the next available number
+    next_number = max_number + 1
+    
+    # Create the new filename with _i and enforced n_digits pattern
+    new_name = f"{base_name}_i{next_number:0{n_digits}d}{ext}"
+    
+    if path:
+        new_name = os.path.join(path, new_name)
+    return new_name
+
+def save_to_csv(
+    combined_df: pd.DataFrame,
+    search_term: str,
+    path: Optional[str] = None,
+    comment: Optional[str] = None,
+    verbose: bool = False
+) -> str:
+    """
+    Save the dataframe to a CSV file.
+    
+    Args:
+        combined_df (pd.DataFrame): The dataframe to save
+        search_term (str): The search term used to generate the data
+        path (Optional[str]): Directory path to save the file. Defaults to None (current directory)
+        comment (Optional[str]): Comment to add at the top of the file. Defaults to None
+        verbose (bool): Whether to print debug information
+        
+    Returns:
+        str: The filename that was created
+    """
+    # Create a filename with the search term and current ISO date
+    current_date = datetime.now().strftime("%Y-%m-%d")
+    formatted_utc_gmtime = time.strftime("%Y-%m-%dT%H-%MUTC", time.gmtime())
+
+    # Replace spaces with underscores in the search term for the filename
+    safe_search_term = search_term.replace(" ", "_")
+    filename = f"{safe_search_term}_at_{formatted_utc_gmtime}.csv"
+    filename = _numbered_file_name(filename, path=path)
+    
+    # _numbered_file_name will handle the path if provided
+    
+    # First write the comment if provided
+    if comment:
+        with open(filename, 'w') as f:
+            f.write(f"# {comment}\n")
+    
+    # Save the dataframe to the CSV file
+    combined_df.to_csv(filename, index=True, mode='a')
+    _print_if_verbose(f"\nData saved to {filename}", verbose)
+    return filename
+
+def _get_total_size(obj: Any, seen: Optional[set] = None) -> int:
+    """
+    Calculate the total memory size of an object, including all nested objects.
+    
+    Args:
+        obj: The object to measure
+        seen: Set of object IDs already seen (to prevent infinite recursion)
+        
+    Returns:
+        int: Total size in bytes
+    """
+    if seen is None:
+        seen = set()
+        
+    obj_id = id(obj)
+    if obj_id in seen:
+        return 0
+        
+    seen.add(obj_id)
+    size = sys.getsizeof(obj)
+    
+    # Handle different types of objects
+    if isinstance(obj, dict):
+        size += sum(_get_total_size(v, seen) + _get_total_size(k, seen) 
+                   for k, v in obj.items())
+    elif isinstance(obj, (list, tuple, set)):
+        size += sum(_get_total_size(item, seen) for item in obj)
+    elif hasattr(obj, '__dict__'):
+        # Handle custom objects
+        size += _get_total_size(obj.__dict__, seen)
+    elif hasattr(obj, 'items'):
+        # Handle pandas/numpy objects that have items() method
+        size += sum(_get_total_size(v, seen) + _get_total_size(k, seen) 
+                   for k, v in obj.items())
+        
+    return size
+
+
+def diff_month(d1: datetime, d2: datetime) -> int:
+    d2m = d2.replace(day=1) # replace the day of the month with the first day of the month
+    d1m = d1.replace(day=1) # replace the day of the month with the first day of the month
+    return (d2m.year - d1m.year) * 12 + d2m.month - d1m.month
+
+def diff_week(d1: datetime, d2: datetime) -> int:
+    return ((d2-d1).days // 7) # need to test to see if this is correct
+
+def diff_day(d1: datetime, d2: datetime) -> int:
+    return (d2-d1).days
+
+def diff_hour(d1: datetime, d2: datetime) -> int:
+    return ((d2-d1).total_seconds() // 3600)
+
+def period_index_range_info(period_index: pd.PeriodIndex) -> dict:
+    """
+    Calculate the duration of a period index, without the 1 microsecond offset that pandas does by default.
+    Use this with caution! This is what we want for most of our Google Trends purposes,
+    but there are good reasons why Pandas Periods work this way normally.
+    Args:
+        period_index (pd.PeriodIndex): The period index to calculate the duration of.
+    Returns:
+        timedelta: The duration of the period index.
+    """
+    temp_period_index = period_index.union([period_index[-1] + 1])
+    start_dt = temp_period_index[0].start_time
+    end_dt = temp_period_index[-1].start_time
+    duration = end_dt - start_dt
+    num_periods = len(period_index)
+    mean_period_duration = duration / num_periods
+    return {'start_dt': start_dt, 'end_dt': end_dt, 'duration': duration, 'num_periods': num_periods, 'mean_period_duration': mean_period_duration}
+
+def datetime_index_range_info(datetime_index: pd.DatetimeIndex) -> dict:
+    """
+    Calculate the duration of a datetime index.
+    Args:
+        datetime_index (pd.DatetimeIndex): The datetime index to calculate the duration of.
+    Returns:
+        timedelta: The duration of the datetime index.
+    """
+    temp_datetime_index = datetime_index.union([datetime_index[-1] + 1])
+    start_dt = temp_datetime_index[0]
+    end_dt = temp_datetime_index[-1]
+    duration = end_dt - start_dt
+    num_periods = len(datetime_index)
+    mean_period_duration = duration / num_periods
+    return {'start_dt': start_dt, 'end_dt': end_dt, 'duration': duration, 'num_periods': num_periods, 'mean_period_duration': mean_period_duration}
+
+
+# def make_time_range(
+#     start_date: Optional[Union[str, datetime]] = None,
+#     end_date: Optional[Union[str, datetime]] = None
+# ) -> SimpleNamespace:
+#     """
+#     Convert start_date and end_date into a formatted time range string.
+#     If dates are strings, they will be parsed into datetime objects.
+#     If no dates are provided, defaults to the last 270 days.
+#     The output format will be "YYYY-MM-DD YYYY-MM-DD".
+    
+#     Args:
+#         start_date (Optional[Union[str, datetime]]): Start date. If string, will be parsed with dateutil.parser
+#         end_date (Optional[Union[str, datetime]]): End date. If string, will be parsed with dateutil.parser
+        
+#     Returns:
+#         SimpleNamespace: Object containing:
+#             - ymd: Time range string in format "YYYY-MM-DD YYYY-MM-DD"
+#             - mdy: Time range string in format "MM/DD/YYYY MM/DD/YYYY"
+#             - start_datetime: Start date as datetime object
+#             - end_datetime: End date as datetime object
+#     """
+#     # If no dates provided, default to last 270 days
+#     if not start_date and not end_date:
+#         end_date = datetime.now()
+#         start_date = end_date - timedelta(days=270)
+
+#     # default datetime object for parser is january 1 of this year and has hour zero
+#     default_datetime = datetime(2025, 1, 1, 0, 0, 0)
+
+#     # Parse string dates into datetime objects
+#     if isinstance(start_date, str):
+#         start_date = parse(start_date, default=default_datetime)
+#     if isinstance(end_date, str):
+#         end_date = parse(end_date, default=default_datetime)
+        
+#     # Format dates as YYYY-MM-DD
+#     start_str_ymd = start_date.strftime("%Y-%m-%d") if start_date else ""
+#     end_str_ymd = end_date.strftime("%Y-%m-%d") if end_date else ""
+    
+#     # Format dates as MM/DD/YYYY
+#     start_str_mdy = start_date.strftime("%m/%d/%Y") if start_date else ""
+#     end_str_mdy = end_date.strftime("%m/%d/%Y") if end_date else ""
+    
+#     # Combine into time range strings
+#     time_range_ymd = f"{start_str_ymd} {end_str_ymd}".strip()
+#     time_range_mdy = f"{start_str_mdy} {end_str_mdy}".strip()
+    
+#     return {
+#         "ymd": time_range_ymd,
+#         "mdy": time_range_mdy,
+#         "start_datetime": start_date,
+#         "end_datetime": end_date
+#     }
+
+# def standard_dict_to_df(standardized_data: List[Dict[str, Any]]) -> pd.DataFrame:
+#     """
+#     Convert standardized dictionary format to a pandas DataFrame.
+    
+#     Args:
+#         standardized_data (List[Dict[str, Any]]): List of dictionaries in standardized format,
+#             where each dict has 'date' and 'values' keys. The 'values' key contains a list of
+#             dicts with 'query' and 'value' keys.
+            
+#     Returns:
+#         pd.DataFrame: DataFrame with dates as PeriodIndex and one column per search term.
+#             Column names are sanitized versions of the search terms.
+#     """
+#     # Create a dictionary to store the data
+#     data_dict = {}
+    
+#     # Process each entry in the standardized data
+#     for entry in standardized_data:
+#         date = entry['date']
+#         for value_dict in entry['values']:
+#             query = value_dict['query']
+#             value = value_dict['value']
+            
+#             # Sanitize the query name for use as a column name
+#             sanitized_query = query.replace(' ', '_').lower()
+            
+#             # Add the value to the data dictionary
+#             if sanitized_query not in data_dict:
+#                 data_dict[sanitized_query] = {}
+#             data_dict[sanitized_query][date] = value
+    
+#     # Create DataFrame from the dictionary
+#     df = pd.DataFrame(data_dict)
+    
+#     # Convert index to datetime first, then to period
+#     df.index = pd.to_datetime(df.index)
+    
+#     # Determine the appropriate frequency for the PeriodIndex
+#     # Get the time differences between consecutive dates
+#     time_diffs = df.index.to_series().diff()
+    
+#     # If all differences are 1 day, use daily frequency
+#     if (time_diffs == pd.Timedelta(days=1)).all():
+#         freq = 'D'
+#     # If all differences are 1 week, use weekly frequency
+#     elif (time_diffs == pd.Timedelta(weeks=1)).all():
+#         freq = 'W'
+#     # If all dates are the first of the month, use monthly frequency
+#     elif (df.index.day == 1).all():
+#         freq = 'MS'
+#     # If all differences are 1 hour, use hourly frequency
+#     elif (time_diffs == pd.Timedelta(hours=1)).all():
+#         freq = 'h'
+#     else:
+#         # Default to daily frequency if we can't determine
+#         freq = 'D'
+    
+#     # Convert to PeriodIndex
+#     df.index = df.index.to_period(freq)
+    
+#     # Sort by date
+#     df = df.sort_index()
+    
+#     return df
+
+
 
 # def get_index_granularity(index: Union[pd.DatetimeIndex, pd.PeriodIndex], verbose: bool = False) -> str:
 #     """
@@ -276,353 +634,3 @@ def load_config() -> dict:
 #         "period_index": period_index,
 #         "max_units": max_units
 #     }
-
-def _custom_mode(df: pd.DataFrame, axis: int = 1) -> pd.Series:
-    """
-    Calculate mode of a DataFrame, returning mean of modes if multiple exist.
-    
-    Args:
-        df (pd.DataFrame): Input DataFrame
-        axis (int): Axis along which to calculate mode (0 for columns, 1 for rows)
-        
-    Returns:
-        pd.Series: Series containing mode values (or mean of modes if multiple exist)
-    """
-    # Get modes using pandas mode()
-    modes = df.mode(axis=axis)
-    # Calculate mean of modes along the same axis
-    return modes.mean(axis=axis)
-
-def _numbered_file_name(orig_name: str, n_digits: int = 3, path: Optional[str] = None) -> str:
-    """
-    Generate a numbered filename by finding the next available number in the directory.
-    If filename ends with _i### pattern, use the next available number. If no number pattern exists,
-    add _i### pattern with specified digits. Number of digits is enforced in both cases.
-    
-    Args:
-        orig_name (str): The original filename
-        n_digits (int): Number of digits to use for the counter. Defaults to 3
-        path (str, optional): Directory path to search for existing files. Defaults to None (current directory)
-        
-    Returns:
-        str: New filename with the next available number
-    """
-    # Split the filename into base name and extension
-    base_name, ext = os.path.splitext(orig_name)
-    
-    # Remove any existing _i### pattern to get the base name
-    base_name = re.sub(r'_i\d+$', '', base_name)
-    
-    # Get all files in the specified directory
-    search_path = path if path else '.'
-    existing_files = [f for f in os.listdir(search_path) if os.path.isfile(os.path.join(search_path, f))]
-    
-    # Find the highest existing number
-    max_number = 0
-    pattern = re.compile(f"{base_name}_i(\\d+){ext}$")
-    
-    for file in existing_files:
-        match = pattern.match(file)
-        if match:
-            number = int(match.group(1))
-            max_number = max(max_number, number)
-    
-    # Use the next available number
-    next_number = max_number + 1
-    
-    # Create the new filename with _i and enforced n_digits pattern
-    new_name = f"{base_name}_i{next_number:0{n_digits}d}{ext}"
-    
-    if path:
-        new_name = os.path.join(path, new_name)
-    return new_name
-
-def save_to_csv(
-    combined_df: pd.DataFrame,
-    search_term: str,
-    path: Optional[str] = None,
-    comment: Optional[str] = None,
-    verbose: bool = False
-) -> str:
-    """
-    Save the dataframe to a CSV file.
-    
-    Args:
-        combined_df (pd.DataFrame): The dataframe to save
-        search_term (str): The search term used to generate the data
-        path (Optional[str]): Directory path to save the file. Defaults to None (current directory)
-        comment (Optional[str]): Comment to add at the top of the file. Defaults to None
-        verbose (bool): Whether to print debug information
-        
-    Returns:
-        str: The filename that was created
-    """
-    # Create a filename with the search term and current ISO date
-    current_date = datetime.now().strftime("%Y-%m-%d")
-    formatted_utc_gmtime = time.strftime("%Y-%m-%dT%H-%MUTC", time.gmtime())
-
-    # Replace spaces with underscores in the search term for the filename
-    safe_search_term = search_term.replace(" ", "_")
-    filename = f"{safe_search_term}_at_{formatted_utc_gmtime}.csv"
-    filename = _numbered_file_name(filename, path=path)
-    
-    # _numbered_file_name will handle the path if provided
-    
-    # First write the comment if provided
-    if comment:
-        with open(filename, 'w') as f:
-            f.write(f"# {comment}\n")
-    
-    # Save the dataframe to the CSV file
-    combined_df.to_csv(filename, index=True, mode='a')
-    _print_if_verbose(f"\nData saved to {filename}", verbose)
-    return filename
-
-def _get_total_size(obj: Any, seen: Optional[set] = None) -> int:
-    """
-    Calculate the total memory size of an object, including all nested objects.
-    
-    Args:
-        obj: The object to measure
-        seen: Set of object IDs already seen (to prevent infinite recursion)
-        
-    Returns:
-        int: Total size in bytes
-    """
-    if seen is None:
-        seen = set()
-        
-    obj_id = id(obj)
-    if obj_id in seen:
-        return 0
-        
-    seen.add(obj_id)
-    size = sys.getsizeof(obj)
-    
-    # Handle different types of objects
-    if isinstance(obj, dict):
-        size += sum(_get_total_size(v, seen) + _get_total_size(k, seen) 
-                   for k, v in obj.items())
-    elif isinstance(obj, (list, tuple, set)):
-        size += sum(_get_total_size(item, seen) for item in obj)
-    elif hasattr(obj, '__dict__'):
-        # Handle custom objects
-        size += _get_total_size(obj.__dict__, seen)
-    elif hasattr(obj, 'items'):
-        # Handle pandas/numpy objects that have items() method
-        size += sum(_get_total_size(v, seen) + _get_total_size(k, seen) 
-                   for k, v in obj.items())
-        
-    return size
-
-def _print_if_verbose(message: str, verbose: bool = False) -> None:
-    """
-    Print message only if verbose is True, prefixed with the caller's function name and its caller.
-    If the caller is _print, uses the caller of _print instead.
-    Only prints the caller names if they have changed from the last call.
-    
-    Args:
-        message (str): The message to print
-        verbose (bool): Whether to print the message
-    """
-    if verbose:
-        import inspect
-        
-        # Initialize the last caller attributes if they don't exist
-        if not hasattr(_print_if_verbose, 'last_caller'):
-            _print_if_verbose.last_caller = None
-        if not hasattr(_print_if_verbose, 'last_caller_caller'):
-            _print_if_verbose.last_caller_caller = None
-        
-        # Get the caller's frame info
-        caller = inspect.currentframe().f_back
-        # Get the caller's function name
-        caller_name = caller.f_code.co_name
-        
-        # If the caller is _print, get the caller of _print instead
-        if caller_name == '_print':
-            caller = caller.f_back
-            caller_name = caller.f_code.co_name
-        
-        # Get the caller's caller
-        caller_caller = caller.f_back
-        caller_caller_name = caller_caller.f_code.co_name if caller_caller else "unknown"
-        
-        # Only print the caller names if they have changed
-        if caller_name != _print_if_verbose.last_caller or caller_caller_name != _print_if_verbose.last_caller_caller:
-            _print_if_verbose(f"\n[{caller_caller_name}] / [{caller_name}]")
-            _print_if_verbose.last_caller = caller_name
-            _print_if_verbose.last_caller_caller = caller_caller_name
-            
-        # Print the message
-        print(message)
-
-
-def diff_month(d1: datetime, d2: datetime) -> int:
-    d2m = d2.replace(day=1) # replace the day of the month with the first day of the month
-    d1m = d1.replace(day=1) # replace the day of the month with the first day of the month
-    return (d2m.year - d1m.year) * 12 + d2m.month - d1m.month
-
-def diff_week(d1: datetime, d2: datetime) -> int:
-    return ((d2-d1).days // 7) # need to test to see if this is correct
-
-def diff_day(d1: datetime, d2: datetime) -> int:
-    return (d2-d1).days
-
-def diff_hour(d1: datetime, d2: datetime) -> int:
-    return ((d2-d1).total_seconds() // 3600)
-
-def period_index_range_info(period_index: pd.PeriodIndex) -> dict:
-    """
-    Calculate the duration of a period index, without the 1 microsecond offset that pandas does by default.
-    Use this with caution! This is what we want for most of our Google Trends purposes,
-    but there are good reasons why Pandas Periods work this way normally.
-    Args:
-        period_index (pd.PeriodIndex): The period index to calculate the duration of.
-    Returns:
-        timedelta: The duration of the period index.
-    """
-    temp_period_index = period_index.union([period_index[-1] + 1])
-    start_dt = temp_period_index[0].start_time
-    end_dt = temp_period_index[-1].start_time
-    duration = end_dt - start_dt
-    num_periods = len(period_index)
-    mean_period_duration = duration / num_periods
-    return {'start_dt': start_dt, 'end_dt': end_dt, 'duration': duration, 'num_periods': num_periods, 'mean_period_duration': mean_period_duration}
-
-def datetime_index_range_info(datetime_index: pd.DatetimeIndex) -> dict:
-    """
-    Calculate the duration of a datetime index.
-    Args:
-        datetime_index (pd.DatetimeIndex): The datetime index to calculate the duration of.
-    Returns:
-        timedelta: The duration of the datetime index.
-    """
-    temp_datetime_index = datetime_index.union([datetime_index[-1] + 1])
-    start_dt = temp_datetime_index[0]
-    end_dt = temp_datetime_index[-1]
-    duration = end_dt - start_dt
-    num_periods = len(datetime_index)
-    mean_period_duration = duration / num_periods
-    return {'start_dt': start_dt, 'end_dt': end_dt, 'duration': duration, 'num_periods': num_periods, 'mean_period_duration': mean_period_duration}
-
-
-# def make_time_range(
-#     start_date: Optional[Union[str, datetime]] = None,
-#     end_date: Optional[Union[str, datetime]] = None
-# ) -> SimpleNamespace:
-#     """
-#     Convert start_date and end_date into a formatted time range string.
-#     If dates are strings, they will be parsed into datetime objects.
-#     If no dates are provided, defaults to the last 270 days.
-#     The output format will be "YYYY-MM-DD YYYY-MM-DD".
-    
-#     Args:
-#         start_date (Optional[Union[str, datetime]]): Start date. If string, will be parsed with dateutil.parser
-#         end_date (Optional[Union[str, datetime]]): End date. If string, will be parsed with dateutil.parser
-        
-#     Returns:
-#         SimpleNamespace: Object containing:
-#             - ymd: Time range string in format "YYYY-MM-DD YYYY-MM-DD"
-#             - mdy: Time range string in format "MM/DD/YYYY MM/DD/YYYY"
-#             - start_datetime: Start date as datetime object
-#             - end_datetime: End date as datetime object
-#     """
-#     # If no dates provided, default to last 270 days
-#     if not start_date and not end_date:
-#         end_date = datetime.now()
-#         start_date = end_date - timedelta(days=270)
-
-#     # default datetime object for parser is january 1 of this year and has hour zero
-#     default_datetime = datetime(2025, 1, 1, 0, 0, 0)
-
-#     # Parse string dates into datetime objects
-#     if isinstance(start_date, str):
-#         start_date = parse(start_date, default=default_datetime)
-#     if isinstance(end_date, str):
-#         end_date = parse(end_date, default=default_datetime)
-        
-#     # Format dates as YYYY-MM-DD
-#     start_str_ymd = start_date.strftime("%Y-%m-%d") if start_date else ""
-#     end_str_ymd = end_date.strftime("%Y-%m-%d") if end_date else ""
-    
-#     # Format dates as MM/DD/YYYY
-#     start_str_mdy = start_date.strftime("%m/%d/%Y") if start_date else ""
-#     end_str_mdy = end_date.strftime("%m/%d/%Y") if end_date else ""
-    
-#     # Combine into time range strings
-#     time_range_ymd = f"{start_str_ymd} {end_str_ymd}".strip()
-#     time_range_mdy = f"{start_str_mdy} {end_str_mdy}".strip()
-    
-#     return {
-#         "ymd": time_range_ymd,
-#         "mdy": time_range_mdy,
-#         "start_datetime": start_date,
-#         "end_datetime": end_date
-#     }
-
-# def standard_dict_to_df(standardized_data: List[Dict[str, Any]]) -> pd.DataFrame:
-#     """
-#     Convert standardized dictionary format to a pandas DataFrame.
-    
-#     Args:
-#         standardized_data (List[Dict[str, Any]]): List of dictionaries in standardized format,
-#             where each dict has 'date' and 'values' keys. The 'values' key contains a list of
-#             dicts with 'query' and 'value' keys.
-            
-#     Returns:
-#         pd.DataFrame: DataFrame with dates as PeriodIndex and one column per search term.
-#             Column names are sanitized versions of the search terms.
-#     """
-#     # Create a dictionary to store the data
-#     data_dict = {}
-    
-#     # Process each entry in the standardized data
-#     for entry in standardized_data:
-#         date = entry['date']
-#         for value_dict in entry['values']:
-#             query = value_dict['query']
-#             value = value_dict['value']
-            
-#             # Sanitize the query name for use as a column name
-#             sanitized_query = query.replace(' ', '_').lower()
-            
-#             # Add the value to the data dictionary
-#             if sanitized_query not in data_dict:
-#                 data_dict[sanitized_query] = {}
-#             data_dict[sanitized_query][date] = value
-    
-#     # Create DataFrame from the dictionary
-#     df = pd.DataFrame(data_dict)
-    
-#     # Convert index to datetime first, then to period
-#     df.index = pd.to_datetime(df.index)
-    
-#     # Determine the appropriate frequency for the PeriodIndex
-#     # Get the time differences between consecutive dates
-#     time_diffs = df.index.to_series().diff()
-    
-#     # If all differences are 1 day, use daily frequency
-#     if (time_diffs == pd.Timedelta(days=1)).all():
-#         freq = 'D'
-#     # If all differences are 1 week, use weekly frequency
-#     elif (time_diffs == pd.Timedelta(weeks=1)).all():
-#         freq = 'W'
-#     # If all dates are the first of the month, use monthly frequency
-#     elif (df.index.day == 1).all():
-#         freq = 'MS'
-#     # If all differences are 1 hour, use hourly frequency
-#     elif (time_diffs == pd.Timedelta(hours=1)).all():
-#         freq = 'h'
-#     else:
-#         # Default to daily frequency if we can't determine
-#         freq = 'D'
-    
-#     # Convert to PeriodIndex
-#     df.index = df.index.to_period(freq)
-    
-#     # Sort by date
-#     df = df.sort_index()
-    
-#     return df
-

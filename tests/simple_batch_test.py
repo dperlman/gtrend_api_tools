@@ -19,11 +19,12 @@ tor_control_password = config.get('tor', {}).get('control_password')
 api_key = config.get('api_keys', {}).get(API_TO_TEST.lower())
 api_class = get_api_class(API_TO_TEST)
 
-if API_TO_TEST.lower() == "trendspy":
-    # Add tor_control_password for Trendspy
+# if API_TO_TEST.lower() == "trendspy":
+#     # Add tor_control_password for Trendspy
+#     api_instance = api_class(api_key=api_key, verbose=verbose, tor_control_password=tor_control_password)
+# else:
+#     api_instance = api_class(api_key=api_key, verbose=verbose)
     api_instance = api_class(api_key=api_key, verbose=verbose, tor_control_password=tor_control_password)
-else:
-    api_instance = api_class(api_key=api_key, verbose=verbose)
 
 
 # Create a list of search specifications for the batch
