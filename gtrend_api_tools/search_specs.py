@@ -40,7 +40,8 @@ import unicodedata
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Union, Dict, Any, List, Tuple
 from dateutil.parser import parse, ParserError
-from gtrend_api_tools.utils import load_config, _print_if_verbose, period_index_range_info, datetime_index_range_info
+from gtrend_api_tools.utils import load_config, period_index_range_info, datetime_index_range_info
+from loguru import logger
 from gtrend_api_tools.date_strings import parse_date_str, split_date_range_str, cleanup_date_str, get_resolution_details # parse_date_str is a wrapper for dateutil.parser.parse where we set the default the way we want it
 from gtrend_api_tools.granularity import GranularityManager
 import pandas as pd
@@ -117,6 +118,8 @@ class DateRange:
 
         # Get the resolution arguments and apply them to the start and end dates and range strings
         self._apply_resolution()
+        
+        logger.info(f"DateRange initialized: {self.str.full_range_ymd} (freq={self.freq}, resolution={self.resolution})")
 
     # Private methods
 
@@ -135,6 +138,8 @@ class DateRange:
         If range_str is provided, it must be a valid date range string.
         If start and end are provided, they must be valid date strings or datetime objects.
         """
+        logger.debug(f"DateRange input validation: range_str={range_str}, start={start}, end={end}")
+        
         if range_str is not None and type(range_str) == str:
             if start is not None or end is not None:
                 raise ValueError(f"{self.__class__.__name__} does not accept the arguments `start`, and `end` when `range_str` is provided")
@@ -223,8 +228,8 @@ class DateRange:
         clean_range_str = cleanup_date_str(range_str)
         # split the date range string into start and end date
         start_str, end_str = split_date_range_str(clean_range_str)
-        # print(start_str)
-        # print(end_str)
+        
+        logger.debug(f"Parsing range string: '{range_str}' -> start='{start_str}', end='{end_str}'")
         
         return start_str, end_str
     
@@ -236,9 +241,8 @@ class DateRange:
         We will set our start_dt and end_dt properties to what the PeriodIndex calculates.
         The PeriodIndex will also help us get the duration, num_periods, and mean_period_duration.
         """
-        # print(self.freq)
-        # print(self.original_start_dt)
-        # print(self.original_end_dt)
+        logger.debug(f"Creating period index: start={self.original_start_dt}, end={self.original_end_dt}, freq={self.freq}")
+        
         self.period_index = pd.period_range(start=self.original_start_dt, end=self.original_end_dt, freq=self.freq, periods=self.periods)
         self.datetime_index = self.period_index.to_timestamp().tz_localize(CURRENT_DEFAULT_DT.tzinfo)
         # print(self.datetime_index.freqstr)
@@ -257,6 +261,8 @@ class DateRange:
         self.duration = self.end_dt - self.start_dt
         self.num_periods = len(self.period_index)
         self.mean_period_duration = self.duration / self.num_periods
+        
+        logger.trace(f"Period index created: {len(self.period_index)} periods, duration={self.duration}")
 
         #self.range_info = period_index_range_info(self.period_index) 
         #self.range_info = datetime_index_range_info(self.datetime_index) 
@@ -271,7 +277,9 @@ class DateRange:
         NOTE AND TODO: When we change self.start_dt and self.end_dt here, does it change what the PeriodIndex would be?
         """
         res_args, format_str_ymd, format_str_mdy = get_resolution_details(self.resolution)
-        #print(self.resolution, format_str_ymd)
+        
+        logger.trace(f"Applying resolution: {self.resolution} -> format_ymd='{format_str_ymd}', format_mdy='{format_str_mdy}'")
+        
         self.start_dt = self.start_dt.replace(**res_args)
         self.last_index_dt = self.last_index_dt.replace(**res_args)
         self.end_dt = self.end_dt.replace(**res_args)
@@ -364,6 +372,8 @@ class GtrendDateRange(DateRange):
         The PeriodIndex will also give us the duration, num_periods, and mean_period_duration,
         with help from the utils.py function period_index_range_info.
         """
+        logger.debug(f"Calculating granularity: start={self.original_start_dt}, end={self.original_end_dt}, api={self.api}")
+        
         if self.granularity_manager is None:
             self.granularity_manager = GranularityManager(api=self.api) # will load config automatically
         self.granularity_info = self.granularity_manager.calculate_search_granularity(
@@ -377,6 +387,8 @@ class GtrendDateRange(DateRange):
         self.resolution = self.granularity_info['result_resolution']
         self.search_resolution = self.granularity_info['search_resolution']
         super()._init_date_range_info()
+        
+        logger.info(f"GtrendDateRange granularity calculated: {self.granularity} (freq={self.freq}, resolution={self.resolution})")
 
     def _apply_resolution(self) -> None:
         """
@@ -523,7 +535,7 @@ class SearchSpec(GtrendDateRange):
         # Load config
         self.config = load_config()
         # Check if api is provided and validate it against allowed APIs in config
-        _print_if_verbose(f"SearchSpec(api={self.api}) initializing search spec")
+        logger.debug(f"SearchSpec(api={self.api}) initializing search spec")
         available_apis = self.config.get('available_apis', {})
         if self.api is not None and self.api not in available_apis:
             raise ValueError(f"API '{self.api}' is not allowed. Allowed APIs are: {available_apis.keys()}")
@@ -538,11 +550,15 @@ class SearchSpec(GtrendDateRange):
         else:
             self.terms = search_term
         
+        logger.trace(f"Processing search terms: input='{search_term}' -> terms={self.terms}")
+        
         # Check if the number of terms is greater than the max_terms parameter
         if len(self.terms) > self.config['api_parameters']['all']['max_terms']:
             raise ValueError(f"Number of search terms ({len(self.terms)}) exceeds the maximum allowed ({self.config['api_parameters']['all']['max_terms']})")
         
         self.term_string = ','.join(self.terms)
+        
+        logger.info(f"SearchSpec created: terms='{self.term_string}', range={self.str.full_range_ymd}, granularity={self.granularity}")
 
     def __str__(self):
         return f"{self.__class__.__name__} {self.term_string} {self.str.index_range_ymd}"

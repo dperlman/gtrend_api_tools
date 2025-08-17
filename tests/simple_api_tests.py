@@ -155,13 +155,13 @@ def main():
         #{"name": "SerpApi", "instance": None, "search_term": "coffee,tea"},
         #{"name": "Serpwow", "instance": None, "search_term": "coffee,tea"},
         #{"name": "SearchApi", "instance": None, "search_term": "coffee,tea"},
-        {"name": "ApplescriptSafari", "instance": None, "search_term": "coffee,tea"},
+        #{"name": "ApplescriptSafari", "instance": None, "search_term": "coffee,tea"},
         #{"name": "Brightdata", "instance": None, "search_term": "coffee,tea"},
         #{"name": "Scrapingdog", "instance": None, "search_term": "coffee,tea"},
         #{"name": "Decodo", "instance": None, "search_term": "coffee,tea"},
         #{"name": "ApplescriptSafari", "instance": None, "search_term": "car,truck"},
         #{"name": "TrendsPy", "instance": None, "search_term": "coffee,tea"},
-        #{"name": "DummyApi", "instance": None, "search_term": "coffee,tea"}
+        {"name": "DummyApi", "instance": None, "search_term": "coffee,tea"}
     ]
 
     # Create API instances

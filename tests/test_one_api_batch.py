@@ -3,8 +3,8 @@ from datetime import datetime, timezone
 from gtrend_api_tools.search_specs import SearchSpec
 
 # Configure which API to test - change this to test different APIs
-API_TO_TEST = 'decodo'
-BATCH_METHOD = "thread"  # options are 'thread' or 'sequential'
+API_TO_TEST = 'applescript_safari'
+BATCH_METHOD = "sequential"  # options are 'thread' or 'sequential'
 MAX_WORKERS = 10
 NUMBER_OF_SPECS = 10
 

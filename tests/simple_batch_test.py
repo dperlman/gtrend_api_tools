@@ -6,8 +6,8 @@ from gtrend_api_tools.utils import load_config
 # Import the fixture functions and call them to get the data
 from fixtures.search_fixtures import simple_test_case_list
 
-API_TO_TEST = 'scrapingdog'
-BATCH_METHOD = "thread"  # options are 'thread' or 'sequential'
+API_TO_TEST = 'dummy_api'
+BATCH_METHOD = "sequential"  # options are 'thread' or 'sequential'
 MAX_WORKERS = 10
 
 verbose = True
@@ -56,11 +56,9 @@ results = api_instance.search_batch(
 )
 
 # print(results)
-
+print("internal_state_history:")
 print(api_instance.internal_state_history)
 #print(api_instance.data)
 #print(api_instance.dataframe)
 
-print(results[0].dataframe)
-print(results[0].dataframe)
-print(results[0].dataframe)
+#print(results[0].dataframe)
