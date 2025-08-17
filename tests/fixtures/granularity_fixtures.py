@@ -12,7 +12,7 @@ LOG_LEVEL = 'INFO'  # Logging level for tests
 @pytest.fixture(scope="module")
 def granularity_manager(test_config):
     """Fixture providing a GranularityManager instance."""
-    return GranularityManager(test_config, verbose=False)
+    return GranularityManager(test_config)
 
 @pytest.fixture(scope="module")
 def granularity_api_1(available_apis):

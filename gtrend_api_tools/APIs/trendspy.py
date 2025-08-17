@@ -60,8 +60,8 @@ class TrendsPy(API_Call):
             test_response.raise_for_status()
             return proxy_config
         except Exception as e:
-            self.print_func(f"Proxy connection test failed: {str(e)}")
-            self.print_func("Note: If using Tor Browser, make sure it's running and the SOCKS proxy is enabled")
+            self.logger.warning(f"Proxy connection test failed: {str(e)}")
+            self.logger.warning("Note: If using Tor Browser, make sure it's running and the SOCKS proxy is enabled")
             raise ValueError(f"Failed to connect to proxy {self.proxy}: {str(e)}")
 
     def search(self, **kwargs) -> 'TrendsPy':
@@ -77,11 +77,11 @@ class TrendsPy(API_Call):
         # Call base class search method first to handle terms and dates
         super().search(**kwargs)
         
-        self.print_func(f"Sending TrendsPy search request:")
-        self.print_func(f"  Search term: {self.search_spec.term_string}")
-        self.print_func(f"  Search date range: {self.search_spec.str.search_range_ymd}")
-        self.print_func(f"  Proxy: {self.proxy or 'None'}")
-        self.print_func(f"  Change identity: {self.change_identity}")
+        self.logger.info(f"Sending TrendsPy search request...")
+        self.logger.debug(f"  Search term: {self.search_spec.term_string}")
+        self.logger.debug(f"  Search date range: {self.search_spec.str.search_range_ymd}")
+        self.logger.debug(f"  Proxy: {self.proxy or 'None'}")
+        self.logger.debug(f"  Change identity: {self.change_identity}")
         
         # Prepare the parameters for interest_over_time
         params = {
@@ -92,25 +92,25 @@ class TrendsPy(API_Call):
         # Parse time range if provided
         if self.search_spec.start_dt or self.search_spec.end_dt:
             params['timeframe'] = self.search_spec.str.search_range_ymd
-            self.print_func(f"  Time range: {self.search_spec.str.search_range_ymd}")
+            self.logger.debug(f"  Time range: {self.search_spec.str.search_range_ymd}")
         else:
-            self.print_func("  Time range: default")
+            self.logger.debug("  Time range: default")
         
         # If change_identity is True, change the Tor identity before the search
         if self.change_identity:
-            self.print_func("  Changing Tor identity")
-            change_tor_identity(self.tor_control_password, self.print_func)
+            self.logger.debug("  Changing Tor identity")
+            change_tor_identity(self.tor_control_password)
         
         self.raw_data = self.trends.interest_over_time(self.search_spec.term_string, return_raw=True, **params) # we want raw dicts because we will clean and standardize them all later
         
         # Check if there's an error in the results
         if isinstance(self.raw_data, dict) and "error" in self.raw_data:
             error_msg = self.raw_data["error"]
-            self.print_func(f"  Search failed: {error_msg}")
+            self.logger.error(f"  Search failed: {error_msg}")
             raise Exception(error_msg)
         
-        self.print_func("  Search successful!")
-        #self.print_func(self.raw_data)
+        self.logger.info("Search successful!")
+        self.logger.trace(self.raw_data)
         
         return self
 
@@ -145,7 +145,7 @@ class TrendsPy(API_Call):
                 ]
             }
             data.append(standardized_entry)
-        self.print_func(f"Standardized data length: {len(data)}")
+        self.logger.debug(f"Standardized data length: {len(data)}")
         self.raw_date_list = raw_date_list
         self.data = data
         return self

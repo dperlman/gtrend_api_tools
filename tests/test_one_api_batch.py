@@ -57,7 +57,7 @@ def test_execute_batch(api_instance, test_terms, test_dates):
     
     # Execute the batch using the API's search_batch method
     print(f"\n🚀 Executing batch search with {BATCH_METHOD} method...")
-    results, errors = api_instance.search_batch(
+    results = api_instance.search_batch(
         search_spec_list=spec_list,
         method=BATCH_METHOD,
         max_workers=MAX_WORKERS
@@ -71,12 +71,12 @@ def test_execute_batch(api_instance, test_terms, test_dates):
     print(f"✅ Found {len(results)} results as expected")
     
     # Check that there were no errors
-    error_count = sum(bool(error) for error in errors)
-    assert len(errors) == 3 and all((not error) for error in errors), f"Expected 0 errors, got {error_count}: {errors}"
+    error_count = sum(1 for r in results if getattr(r, 'is_error', False))
+    assert error_count == 0, f"Expected 0 errors, got {error_count}"
     print(f"✅ No errors occurred ({error_count} errors found)")
     
     # Calculate progress
-    completed = sum(1 for error in errors if not error)
+    completed = sum(1 for r in results if not getattr(r, 'is_error', False))
     total = len(spec_list)
     percentage = (completed / total) * 100.0 if total > 0 else 0.0
     
@@ -162,7 +162,7 @@ def test_variable_batch_size(api_instance, spec_list):
     
     # Execute the batch using the API's search_batch method
     print(f"\n🚀 Executing batch search with {BATCH_METHOD} method...")
-    results, errors = api_instance.search_batch(
+    results = api_instance.search_batch(
         search_spec_list=spec_list,
         method=BATCH_METHOD,
         max_workers=MAX_WORKERS
@@ -181,12 +181,12 @@ def test_variable_batch_size(api_instance, spec_list):
     print(f"✅ Found {len(results)} results as expected")
     
     # Check that there were no errors
-    error_count = sum(bool(error) for error in errors)
-    assert len(errors) == expected_count and all((not error) for error in errors), f"Expected 0 errors, got {error_count}: {errors}"
+    error_count = sum(1 for r in results if getattr(r, 'is_error', False))
+    assert error_count == 0, f"Expected 0 errors, got {error_count}"
     print(f"✅ No errors occurred ({error_count} errors found)")
     
     # Calculate progress
-    completed = sum(1 for error in errors if not error)
+    completed = sum(1 for r in results if not getattr(r, 'is_error', False))
     total = len(spec_list)
     percentage = (completed / total) * 100.0 if total > 0 else 0.0
     

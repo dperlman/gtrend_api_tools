@@ -51,10 +51,10 @@ class WinUiautoEdge(API_Call):
         # Get the processed search spec for dates
         spec = self.search_spec
         
-        self.print_func(f"Sending WinUiautoEdge search request:")
-        self.print_func(f"  Search term: {search_term}")
-        self.print_func(f"  Start date: {start_date if start_date else 'default'}")
-        self.print_func(f"  End date: {end_date if end_date else 'default'}")
+        self.logger.debug(f"Sending WinUiautoEdge search request:")
+        self.logger.debug(f"  Search term: {search_term}")
+        self.logger.debug(f"  Start date: {start_date if start_date else 'default'}")
+        self.logger.debug(f"  End date: {end_date if end_date else 'default'}")
         
         try:
             # Prepare the parameters for the search
@@ -77,7 +77,7 @@ class WinUiautoEdge(API_Call):
             # Parse time range if provided
             dr = DateRange(start_date, end_date)
             params['time'] = dr.formatted_range_ymd
-            self.print_func(f"  Time range: {dr.formatted_range_ymd}")
+            self.logger.debug(f"  Time range: {dr.formatted_range_ymd}")
             
             # Make the API call
             search = self.search_client(params)
@@ -86,16 +86,16 @@ class WinUiautoEdge(API_Call):
             # Check if there's an error in the results
             if isinstance(self.raw_data, dict) and "error" in self.raw_data:
                 error_msg = self.raw_data["error"]
-                self.print_func(f"  Search failed: {error_msg}")
+                self.logger.error(f"  Search failed: {error_msg}")
                 raise Exception(error_msg)
             
-            self.print_func("  Search successful!")
-            #self.print_func(self.raw_data)
+            self.logger.info("  Search successful!")
+            #self.logger.debug(self.raw_data)
             
             return self
                     
         except Exception as e:
-            self.print_func(f"  Search failed: {str(e)}")
+            self.logger.error(f"  Search failed: {str(e)}")
             raise
 
     def standardize_data(self) -> 'WinUiautoEdge':

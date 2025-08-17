@@ -2,9 +2,12 @@ from typing import Dict, Union, Optional, Any, Tuple, List
 from datetime import datetime, timedelta
 import pandas as pd
 import numpy as np
-from gtrend_api_tools.utils import load_config, _print_if_verbose, diff_hour, diff_day, diff_week, diff_month, period_index_range_info
+from gtrend_api_tools.utils import load_config, get_module_logger, diff_hour, diff_day, diff_week, diff_month, period_index_range_info
 from gtrend_api_tools.date_strings import parse_date_str
 import math
+
+# Set up module-level logger
+logger = get_module_logger(__file__)
 
 class GranularityManager:
     """
@@ -21,7 +24,7 @@ class GranularityManager:
     The rules are sorted by max_days in ascending order, with rules having
     max_days=None placed at the end.
     """
-    def __init__(self, config: Optional[dict] = None, api: Optional[str] = None, verbose: bool = False):
+    def __init__(self, config: Optional[dict] = None, api: Optional[str] = None):
         """
         Initialize granularity manager.
         
@@ -29,7 +32,6 @@ class GranularityManager:
             config (Optional[dict]): Configuration dictionary containing granularity rules. 
                                    If None, will load config automatically.
             api (Optional[str]): API name. If provided, will use any API-specific overrides in the config file.
-            verbose (bool): Whether to print debug information. Defaults to True.
         """
         if config is None:
             config = load_config()
@@ -40,16 +42,15 @@ class GranularityManager:
         if not self.rules:
             raise ValueError("No granularity rules found in config")
         self.api_rules = config.get('api_granularity_overrides', {})
-        #print(f"GranularityManager(api={api}) loaded rules...")
+        logger.debug(f"GranularityManager(api={api}) loaded rules...")
         self.api = api
         if api:
-            #print(f"Using api_granularity_overrides for {api}")
-            #print(f"api_rules: {self.api_rules}")
+            logger.debug(f"Using api_granularity_overrides for {api}")
+            logger.trace(f"api_rules: {self.api_rules}")
             if api in self.api_rules and self.api_rules[api] is not None:
                 self.rules.update(self.api_rules[api])
-        #print(f"GranularityManager(api={api}) rules:")
-        #print(self.rules)
-        self.verbose = verbose
+        logger.debug(f"GranularityManager(api={api}) rules:")
+        logger.trace(self.rules)
 
 
     def get_index_granularity(self, index: Union[pd.DatetimeIndex, pd.PeriodIndex]) -> str:
@@ -62,58 +63,66 @@ class GranularityManager:
         Returns:
             str: The granularity code ('h' for hour, 'D' for day, 'W' for week, 'ME' for month end)
         """
+        logger.debug(f"Getting index granularity for index starting {index[0]} with length {len(index)} and freq {index.freq}")
+        logger.trace(f"Index:\n{index}")
         # Handle empty DataFrame or invalid index type
-        if len(index) == 0 or not isinstance(index, (pd.DatetimeIndex, pd.PeriodIndex)):
+        if not isinstance(index, (pd.DatetimeIndex, pd.PeriodIndex)):
+            logger.warning(f"Index is not a DatetimeIndex or PeriodIndex: {index}")
             return None # it doesn't make sense to return a granularity code if we don't have any data
         if len(index) < 2:
+            logger.warning(f"Index has less than 2 data points: {index}")
             return None # it doesn't make sense to return a granularity code if there's only one data point
             
         # First try to get the frequency directly
         if index.freq is not None:
             freq_str = str(index.freqstr)
+            logger.trace(f"Using index.freqstr to get frequency: {freq_str}")
             return freq_str
         
         # Now try to use the native pandas method to get the frequency
         freq = index.inferred_freq
         if freq is not None:
             freq_str = str(freq)
+            logger.trace(f"Using index.inferred_freq to get frequency: {freq_str}")
             return freq_str
         
         # If we get here, we are in trouble. the way I thought I would calculate it manually is a bad idea.
+        logger.error(f"Could not determine granularity from index: {index}")
         raise ValueError(f"Could not determine granularity from index: {index}")
-        print("*"*100)
-        print("EMERGENCY: get_index_granularity is not implemented correctly")
-        print("*"*100)
-        ########################################################################################################################
-        # This is actually completely wrong, going to have to fix this
-        # Nothing after this line is correct
-        ########################################################################################################################
+        # print("*"*100)
+        # print("EMERGENCY: get_index_granularity is not implemented correctly")
+        # print("*"*100)
+        # ########################################################################################################################
+        # # This is actually completely wrong, going to have to fix this
+        # # Nothing after this line is correct
+        # ########################################################################################################################
 
-        # If neither of those worked, try to infer from time differences
-        # Convert PeriodIndex to DatetimeIndex if needed
-        if isinstance(index, pd.PeriodIndex):
-            index = index.to_timestamp()
+        # # If neither of those worked, try to infer from time differences
+        # # Convert PeriodIndex to DatetimeIndex if needed
+        # if isinstance(index, pd.PeriodIndex):
+        #     index = index.to_timestamp()
         
-        # Calculate time differences in nanoseconds
-        time_diffs = np.diff(index.astype(np.int64))
-        time_diff_value_counts = pd.Series(time_diffs).value_counts()
+        # # Calculate time differences in nanoseconds
+        # time_diffs = np.diff(index.astype(np.int64))
+        # time_diff_value_counts = pd.Series(time_diffs).value_counts()
         
-        # Print debugging information
-        _print_if_verbose("Unique time differences and their counts:", self.verbose)
-        _print_if_verbose(time_diff_value_counts, self.verbose)
+        # # Print debugging information
+        # _print_if_verbose("Unique time differences and their counts:", self.verbose)
+        # _print_if_verbose(time_diff_value_counts, self.verbose)
         
-        # Use pandas value_counts instead of np.bincount for memory efficiency
-        most_common_diff = time_diff_value_counts.index[0]
-        _print_if_verbose(f"Most common difference: {most_common_diff} nanoseconds", self.verbose)
+        # # Use pandas value_counts instead of np.bincount for memory efficiency
+        # most_common_diff = time_diff_value_counts.index[0]
+        # _print_if_verbose(f"Most common difference: {most_common_diff} nanoseconds", self.verbose)
         
-        # Convert to timedelta and check
-        td = pd.Timedelta(most_common_diff, unit='ns')
-        _print_if_verbose(f"Converted to timedelta: {td}", self.verbose)
+        # # Convert to timedelta and check
+        # td = pd.Timedelta(most_common_diff, unit='ns')
+        # _print_if_verbose(f"Converted to timedelta: {td}", self.verbose)
         
-        # Now get the granularity info and return it.
+        # # Now get the granularity info and return it.
 
-        return self.get_granularity_by_time_diff(td)['freq']
+        # return self.get_granularity_by_time_diff(td)['freq']
     
+
 
     def create_time_indices(
         self,
@@ -147,7 +156,7 @@ class GranularityManager:
             raise ValueError(f"Invalid granularity: {granularity}. Must be one of: {list(self.rules.keys())}")
         
         freq = self.rules[granularity]['freq']
-        _print_if_verbose(f"Using frequency '{freq}' for granularity '{granularity}'", self.verbose)
+        logger.debug(f"Using frequency '{freq}' for granularity '{granularity}'")
         
         # Create period index using the frequency from config
         period_index = pd.period_range(start=start_dt, end=end_dt, freq=freq)
@@ -156,8 +165,8 @@ class GranularityManager:
         # gives us something that matches how Google Trends does it
         datetime_index = period_index.to_timestamp()
         
-        _print_if_verbose(f"Datetime index length: {len(datetime_index)}", self.verbose)
-        _print_if_verbose(f"Period index length: {len(period_index)}", self.verbose)
+        logger.debug(f"Datetime index length: {len(datetime_index)}")
+        logger.debug(f"Period index length: {len(period_index)}")
         
         return datetime_index, period_index
     
@@ -187,8 +196,8 @@ class GranularityManager:
             raise ValueError(f"Invalid granularity: {granularity}. Must be one of: {list(self.rules.keys())}")
             
         period_index = pd.period_range(start=start_dt, end=end_dt, freq=granularity)
-        _print_if_verbose(f"Created period index with {len(period_index)} periods for granularity {granularity}", self.verbose)
-        #_print_if_verbose(f"Period index: {period_index}", self.verbose)
+        logger.debug(f"Created period index with {len(period_index)} periods for granularity {granularity}")
+        logger.trace(f"Period index: {period_index}")
         
         return {
             'num_periods': len(period_index),
@@ -240,7 +249,7 @@ class GranularityManager:
         day_diff = time_diff.days
         hour_diff = time_diff.seconds // 3600
 
-        _print_if_verbose(f"Week difference: {week_diff}, day difference: {day_diff}, hour difference: {hour_diff}", self.verbose)
+        logger.debug(f"Week difference: {week_diff}, day difference: {day_diff}, hour difference: {hour_diff}")
         
         return self.get_granularity_by_max_records_iteration(start_dt, end_dt)
     
@@ -271,11 +280,11 @@ class GranularityManager:
             period_index = pd.period_range(start=truncated_start, end=truncated_end, freq=freq)
             num_periods = len(period_index)
             
-            _print_if_verbose(f"Rule {code}: {num_periods} periods vs limit {max_records}", self.verbose)
+            logger.debug(f"Rule {code}: {num_periods} periods vs limit {max_records}")
             
             # Stop when our number of periods is within the max_records limit
             if num_periods <= max_records:
-                _print_if_verbose(f"Selected granularity {code} ({num_periods} periods <= {max_records})", self.verbose)
+                logger.debug(f"Selected granularity {code} ({num_periods} periods <= {max_records})")
                 break
         
         # If we get here, return the one we left the loop on
@@ -339,11 +348,11 @@ class GranularityManager:
                 - end_dt: End datetime
                 - period_index: The period index spanning the range
         """
-        _print_if_verbose(f"Calculating max period for granularity {granularity}, {periods} periods from {start_dt}", self.verbose)
+        logger.debug(f"Calculating max period for granularity {granularity}, {periods} periods from {start_dt}")
         max_period_index = pd.period_range(start=start_dt, periods=periods, freq=granularity)
         end_dt = max_period_index.end_time[-1].round('s')
-        _print_if_verbose(f"End datetime: {end_dt}", self.verbose)
-        _print_if_verbose(f"Period index length: {len(max_period_index)}", self.verbose)
+        logger.debug(f"End datetime: {end_dt}")
+        logger.debug(f"Period index length: {len(max_period_index)}")
         
         return {
             "start_dt": start_dt,

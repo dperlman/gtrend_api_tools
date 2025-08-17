@@ -113,7 +113,7 @@ class Decodo(API_Call):
             raw_date_list.append(cleanup_date_str(date))
 
 
-        self.print_func(f"Standardized data length: {len(data)}")
+        self.logger.debug(f"Standardized data length: {len(data)}")
         return data
 
 """

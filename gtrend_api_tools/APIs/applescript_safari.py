@@ -9,13 +9,15 @@ import html
 from bs4 import BeautifulSoup
 from gtrend_api_tools.APIs.base_classes import API_Call, TrendSearchResult, TrendSearchContainer
 import pandas as pd
-from gtrend_api_tools.utils import _print_if_verbose
+from gtrend_api_tools.utils import get_module_logger
 from gtrend_api_tools.search_specs import DateRange, GtrendDateRange
 from gtrend_api_tools.date_strings import cleanup_date_str, standardize_date_range_start, split_date_range_str, standardize_date_format
 import json
 import unicodedata
 from dateparser import parse
 
+# Set up module-level logger
+logger = get_module_logger(__file__)
 
 class AuthenticationError(Exception):
     """Raised when Google authentication fails."""
@@ -71,7 +73,6 @@ class GoogleAuthSession:
         safari_instance: 'ApplescriptSafari',
         poll_max_tries: int = 5,
         poll_wait_time: int = 1,
-        print_func: Optional[Callable] = None,
         auth_email: Optional[str] = None
     ):
         """
@@ -81,13 +82,11 @@ class GoogleAuthSession:
             safari_instance (ApplescriptSafari): The parent ApplescriptSafari instance
             poll_max_tries (int): Maximum number of attempts to find the text
             poll_wait_time (int): Time to wait between attempts in seconds
-            print_func (Optional[Callable]): Function to use for printing debug information
             auth_email (Optional[str]): Email to use for Google authentication
         """
         self.safari = safari_instance
         self.poll_max_tries = poll_max_tries
         self.poll_wait_time = poll_wait_time
-        self.print_func = print_func or _print_if_verbose
         self.auth_email = auth_email
         self._auth_status = None
 
@@ -105,8 +104,8 @@ class GoogleAuthSession:
         account_chooser_config = CONFIRM_CONFIGS['google_auth_choose']
         auth_config = CONFIRM_CONFIGS['google_auth']
         
-        self.print_func("Checking Google authentication...")
-        self.print_func(f"URL: {account_chooser_config['url']}")
+        logger.debug("Checking Google authentication...")
+        logger.debug(f"URL: {account_chooser_config['url']}")
         
         # Open the URL
         self.safari.open_url_in_safari(account_chooser_config['url'])
@@ -121,7 +120,7 @@ class GoogleAuthSession:
             raise AuthenticationError("Failed to find Account Chooser page")
         
         # Check for auth_email
-        self.print_func(f"\nChecking for email: {account_chooser_config['auth_email']}")
+        logger.debug(f"Checking for email: {account_chooser_config['auth_email']}")
         elements = self.safari.poll_for_text(
             search_texts=account_chooser_config['auth_email'],
             query_selectors=account_chooser_config['auth_email_queryselector'],
@@ -133,7 +132,7 @@ class GoogleAuthSession:
 
         # Check for initial term (Welcome)
         initial_term = auth_config['terms'][0]
-        self.print_func(f"\nChecking for '{initial_term['term']}' text...")
+        logger.debug(f"Checking for '{initial_term['term']}' text...")
         
         # Try to find the initial term
         elements = self.safari.poll_for_text(
@@ -233,10 +232,9 @@ class ApplescriptSafari(API_Call):
 
         # Create auth session if it doesn't exist
         if self._auth_session is None:
-            self.print_func("Creating new GoogleAuthSession")
+            self.logger.debug("Creating new GoogleAuthSession")
             self._auth_session = GoogleAuthSession(
                 safari_instance=self,
-                print_func=self.print_func,
                 auth_email=self.auth_email
             )
         
@@ -246,13 +244,13 @@ class ApplescriptSafari(API_Call):
         if not self._auth_session.is_authenticated:
             raise Exception("Google authentication login failed")
 
-        self.print_func(f"Sending ApplescriptSafari search request:")
-        self.print_func(f"  Search term: {spec.term_string}")
-        self.print_func(f"  Search date range: {spec.str.search_range_ymd}")
+        self.logger.debug(f"Sending ApplescriptSafari search request:")
+        self.logger.debug(f"  Search term: {spec.term_string}")
+        self.logger.debug(f"  Search date range: {spec.str.search_range_ymd}")
         
         # Use the base trends URL from internal_state instead of constructing our own
         formatted_url = internal_state.base_trends_request_url
-        self.print_func(f"Opening URL: {formatted_url}")
+        self.logger.debug(f"Opening URL: {formatted_url}")
         
         # Open URL in Safari, creating window only if needed
         self.open_url_in_safari(formatted_url)
@@ -268,11 +266,11 @@ class ApplescriptSafari(API_Call):
 
         # Record the end time of the search
         internal_state.search_result.set_receive_timestamp()
-        self.print_func("Search successful!")
+        self.logger.debug("Search successful!")
         
         # Close tab if configured to do so
         if self.close_tabs:
-            self.print_func("Closing front Safari tab")
+            self.logger.debug("Closing front Safari tab")
             self._close_front_safari_tab()
 
         return self
@@ -317,7 +315,7 @@ class ApplescriptSafari(API_Call):
         # Get the search terms from the page title
         search_terms = raw_data['page_title_text'].split(' - ')[0].split(',')
         search_terms = [term.strip() for term in search_terms]
-        self.print_func(f"Trends page search terms: {search_terms}")
+        self.logger.debug(f"Trends page search terms: {search_terms}")
 
         # Parse the HTML using BeautifulSoup
         soup = BeautifulSoup(raw_data['trends_html'], 'html.parser')
@@ -342,7 +340,7 @@ class ApplescriptSafari(API_Call):
 
         # now that we know the right number, we can make a date range object
         date_range = DateRange(start=start_date, freq=self.internal_state.search_spec.freq, periods=len(rows), resolution="m")
-        self.print_func(f"Parsed date range with DateRange: {repr(date_range)}")
+        self.logger.debug(f"Parsed date range with DateRange: {repr(date_range)}")
         
         # Sanity check that the number of rows is the same as the number of dates in the date range
         #if len(rows) != len(date_range.datetime_str_list_ymd):
@@ -378,7 +376,7 @@ class ApplescriptSafari(API_Call):
             if (standardized_datetime.day != current_index_datetime.day or 
                 standardized_datetime.hour != current_index_datetime.hour or 
                 standardized_datetime.minute != current_index_datetime.minute):
-                self.print_func(f"DateTime component mismatch in row {i}: standardized={standardized_datetime}, current={current_index_datetime}")
+                self.logger.warning(f"DateTime component mismatch in row {i}: standardized={standardized_datetime}, current={current_index_datetime}")
 
             # Get values for each column (except the date column)
             values = []
@@ -406,7 +404,7 @@ class ApplescriptSafari(API_Call):
         if not data:
             raise ValueError("No valid data found in table")
             
-        self.print_func(f"Standardized data length: {len(data)}")
+        self.logger.debug(f"Standardized data length: {len(data)}")
         return data
 
     # def standardize_data(self) -> 'ApplescriptSafari':
@@ -445,7 +443,7 @@ class ApplescriptSafari(API_Call):
         num_terms = min(num_terms, 5)
         
         # Base terms that should always be present
-        self.print_func("Checking for expected elements on trends page...")
+        self.logger.debug("Checking for expected elements on trends page...")
         
         # Check all terms from config in one call
         elements = self.poll_for_text(
@@ -462,60 +460,60 @@ class ApplescriptSafari(API_Call):
         }
         
         if not elements:
-            self.print_func("Warning: Expected elements were not found on the page")
+            self.logger.warning("Expected elements were not found on the page")
             return raw_data # empty raw_data dictionary
         
         
         # Get the date range text
-        self.print_func("Getting date range html...")
+        self.logger.debug("Getting date range html...")
         date_range_element = self.get_element_by_text(
             date_range_config['string_to_search_for'],
             query_selector=date_range_config['queryselector'],
             get_container_table=False
         )
-        self.print_func(f"Raw date_range_element: {date_range_element}")
+        self.logger.trace(f"Raw date_range_element: {date_range_element}")
         # Check if date_range_element has a 'text' attribute and if the text attribute is non-empty
         if date_range_element and 'text' in date_range_element[0] and date_range_element[0]['text']:
-            self.print_func(f"Trends page date range: {date_range_element[0]['text']}")
+            self.logger.debug(f"Trends page date range: {date_range_element[0]['text']}")
             raw_data['date_range_text'] = date_range_element[0]['text']
         else:
-            self.print_func("Could not find date range element text")
+            self.logger.warning("Could not find date range element text")
 
         # Get the y1 element outerHTML because that's the actual trends data we want.
-        self.print_func("Getting y1 element container table...")
+        self.logger.debug("Getting y1 element container table...")
         y1_elements = self.get_element_by_text(
             search_text=trends_config['terms'][-1]['term'],
             query_selector=trends_config['terms'][-1]['queryselector'],
             get_container_table=True
         )
         if y1_elements[0]['containerTable']:
-            self.print_func("Found y1 element container table.")
+            self.logger.debug("Found y1 element container table.")
             container_table  = y1_elements[0]['containerTable']
             # Prettify the HTML using BeautifulSoup
             soup = BeautifulSoup(container_table, 'html.parser')
             prettified_html = soup.prettify()
-            # self.print_func(f"Trends page trends: {prettified_html}")
+            self.logger.trace(f"Trends page trends: {prettified_html}")
             raw_data['trends_html'] = prettified_html
         else:
-            self.print_func("Could not find y1 element container table")
-            # self.print_func(f"y1_elements: {y1_elements}")
+            self.logger.warning("Could not find y1 element container table")
+            self.logger.trace(f"y1_elements: {y1_elements}")
 
 
         # We want to get the list of search terms. There are a few ways to try to scrape this.
         # Can get it from the page title.
-        self.print_func("Getting search terms from page title...")
+        self.logger.debug("Getting search terms from page title...")
         page_title_text = self.get_element_by_text(
             search_text='',
             query_selector='title',
             get_container_table=False
         )
-        self.print_func(f"Raw page_title_text: {page_title_text}")
+        self.logger.trace(f"Raw page_title_text: {page_title_text}")
         # Check if date_range_element has a 'text' attribute and if the text attribute is non-empty
         if page_title_text and 'text' in page_title_text[0] and page_title_text[0]['text']:
-            self.print_func(f"Trends page title text: {page_title_text[0]['text']}")
+            self.logger.debug(f"Trends page title text: {page_title_text[0]['text']}")
             raw_data['page_title_text'] = page_title_text[0]['text']
         else:
-            self.print_func("Could not find page title text")
+            self.logger.warning("Could not find page title text")
         
         # The table of search terms header only seems to show up if there are multiple search terms.
         # So we won't use this one after all.
@@ -551,7 +549,7 @@ class ApplescriptSafari(API_Call):
             load_delay (int): Number of seconds to wait after opening URL for page to load. Default is 0 seconds.
         """
         try:
-            self.print_func(f"Preparing to open URL: {url}")
+            self.logger.debug(f"Preparing to open URL: {url}")
             # AppleScript to open URL in new tab of front window, with fallback to open location
             script = f'''
             tell application "Safari"
@@ -565,23 +563,23 @@ class ApplescriptSafari(API_Call):
                 end try
             end tell
             '''
-            self.print_func("Executing AppleScript...")
+            self.logger.debug("Executing AppleScript...")
             
             # Run the AppleScript
             result = applescript.run(script)
             
             if result.code == 0:
-                self.print_func(f"Successfully opened URL: {url}")
+                self.logger.debug(f"Successfully opened URL: {url}")
                 # Add a delay to ensure the page loads
-                self.print_func(f"Waiting {load_delay} seconds for page to load...")
+                self.logger.debug(f"Waiting {load_delay} seconds for page to load...")
                 time.sleep(load_delay)
             else:
-                self.print_func(f"Error opening URL: {result.err}")
-                self.print_func(f"Error code: {result.code}")
+                self.logger.error(f"Error opening URL: {result.err}")
+                self.logger.error(f"Error code: {result.code}")
                 
         except Exception as e:
-            self.print_func(f"Error executing AppleScript: {str(e)}")
-            self.print_func(f"Error type: {type(e)}")
+            self.logger.error(f"Error executing AppleScript: {str(e)}")
+            self.logger.error(f"Error type: {type(e)}")
             raise
 
     def get_element_by_text(self, search_text: str, query_selector: Optional[str] = None, click: bool = False, get_container_table: bool = False) -> List[Dict[str, str]]:
@@ -597,10 +595,10 @@ class ApplescriptSafari(API_Call):
             List[Dict[str, str]]: List of dictionaries containing tag and text for each matching element.
             Only returns elements with matchType 'text' or 'script'. Returns empty list if only debug data found.
         """
-        self.print_func(f"get_element_by_text: get_container_table: {get_container_table}")
+        self.logger.debug(f"get_element_by_text: get_container_table: {get_container_table}")
 
         # Get the JavaScript code
-        escaped_js = get_escaped_js_for_text_search_v3(search_text, query_selector or "*", self.print_func, click=click, get_container_table=get_container_table)
+        escaped_js = get_escaped_js_for_text_search_v3(search_text, query_selector or "*", click=click, get_container_table=get_container_table)
         
         # AppleScript to execute JavaScript
         script = f'''
@@ -609,13 +607,13 @@ class ApplescriptSafari(API_Call):
         end tell
         '''
         for attempt in range(1, self.poll_max_tries + 1):
-            self.print_func(f"get_element_by_text: attempt {attempt} of {self.poll_max_tries}")
+            self.logger.debug(f"get_element_by_text: attempt {attempt} of {self.poll_max_tries}")
             # Run the AppleScript
-            self.print_func("get_element_by_text: about to run AppleScript")
+            self.logger.debug("get_element_by_text: about to run AppleScript")
             result = applescript.run(script)
-            self.print_func(f"get_element_by_text: finished applescript:")
-            self.print_func(f"get_element_by_text: result.code: {result.code}")
-            self.print_func(f"get_element_by_text: result.err: {result.err}")
+            self.logger.debug(f"get_element_by_text: finished applescript:")
+            self.logger.trace(f"get_element_by_text: result.code: {result.code}")
+            self.logger.trace(f"get_element_by_text: result.err: {result.err}")
             
             data = None
             if result.code == 0:
@@ -625,40 +623,40 @@ class ApplescriptSafari(API_Call):
                     data = json.loads(response)
                     if isinstance(data, list):
                         # This is the case where we found the elements
-                        self.print_func(f"get_element_by_text: Found {len(data)} elements.")
+                        self.logger.debug(f"get_element_by_text: Found {len(data)} elements.")
                         for element in data:
-                            self.print_func(f"get_element_by_text: {element['domPath']}")
+                            self.logger.trace(f"get_element_by_text: {element['domPath']}")
                         return data
                     elif isinstance(data, dict):
                         # This is the case where we received debug from the JavaScript
-                        self.print_func(f"get_element_by_text: Error or Debug response.")
+                        self.logger.debug(f"get_element_by_text: Error or Debug response.")
                     else:
-                        self.print_func(f"get_element_by_text: Unexpected response: {data}")
+                        self.logger.warning(f"get_element_by_text: Unexpected response: {data}")
                 except json.JSONDecodeError as e:
-                    self.print_func(f"get_element_by_text: Error parsing JSON response: {str(e)}")
-                    self.print_func(f"get_element_by_text: Response: {response}")
+                    self.logger.error(f"get_element_by_text: Error parsing JSON response: {str(e)}")
+                    self.logger.error(f"get_element_by_text: Response: {response}")
             else:
-                self.print_func(f"get_element_by_text: Error executing JavaScript: {result.err}")
-            self.print_func(f"get_element_by_text: Trying again after {self.poll_wait_time} seconds...")
+                self.logger.error(f"get_element_by_text: Error executing JavaScript: {result.err}")
+            self.logger.debug(f"get_element_by_text: Trying again after {self.poll_wait_time} seconds...")
             time.sleep(self.poll_wait_time)
             
         # This is the case where we received debug from the JavaScript
         if not data:
             # This is the case where we received an error from the JavaScript
-            self.print_func("get_element_by_text: No data found")
+            self.logger.warning("get_element_by_text: No data found")
             raise
         elif data.get('matchType') == 'debug':
-            # self.print_func("Debug response:")
-            # self.print_func(f"  Element count: {data.get('elementCount')}")
-            # self.print_func(f"  Search text: {data.get('searchText')}")
-            # self.print_func(f"  Document ready: {data.get('documentReady')}")
-            # self.print_func(f"  URL: {data.get('url')}")
-            # self.print_func(f"  Title: {data.get('title')}")
+            self.logger.trace("Debug response:")
+            self.logger.trace(f"  Element count: {data.get('elementCount')}")
+            self.logger.trace(f"  Search text: {data.get('searchText')}")
+            self.logger.trace(f"  Document ready: {data.get('documentReady')}")
+            self.logger.trace(f"  URL: {data.get('url')}")
+            self.logger.trace(f"  Title: {data.get('title')}")
             raise JavaScriptError(f"get_element_by_text: After all {self.poll_max_tries} attempts we only had a debug response.")
         elif data.get('matchType') == 'error':
             # This is the case where we received an error from the JavaScript
-            self.print_func(f"JavaScript error in get_element_by_text: {data.get('error')}")
-            self.print_func(f"Stack trace: {data.get('stack')}")
+            self.logger.error(f"JavaScript error in get_element_by_text: {data.get('error')}")
+            self.logger.error(f"Stack trace: {data.get('stack')}")
             raise JavaScriptError(f"get_element_by_text: After all {self.poll_max_tries} attempts we only had an error response.")
         else:
             # We don't know what happened but it was bad
@@ -694,36 +692,36 @@ class ApplescriptSafari(API_Call):
         query_selectors = query_selectors or [None] * len(search_texts)
         
         for search_text, query_selector in zip(search_texts, query_selectors):
-            self.print_func(f"Searching for text: {search_text}")
+            self.logger.debug(f"Searching for text: {search_text}")
             for attempt in range(1, self.poll_max_tries + 1):
-                self.print_func(f"--Polling attempt {attempt}/{self.poll_max_tries} for '{search_text}'")
+                self.logger.debug(f"--Polling attempt {attempt}/{self.poll_max_tries} for '{search_text}'")
                 
                 # Try to find the text
                 elements = self.get_element_by_text(search_text, query_selector, click=click)
                 
                 if elements and not isinstance(elements, dict):  # Only return if we have actual matches
-                    self.print_func(f"Found text '{search_text}' in {len(elements)} elements on attempt {attempt}")
+                    self.logger.debug(f"Found text '{search_text}' in {len(elements)} elements on attempt {attempt}")
                     return elements
                 
                 if attempt < self.poll_max_tries:
-                    self.print_func(f"Text '{search_text}' not found, waiting {self.poll_wait_time} seconds before next attempt...")
+                    self.logger.debug(f"Text '{search_text}' not found, waiting {self.poll_wait_time} seconds before next attempt...")
                     time.sleep(self.poll_wait_time)
         
-        self.print_func("No matches found after all attempts")
+        self.logger.warning("No matches found after all attempts")
         
         # Print which terms were found and which weren't
         found_terms = [term for term in search_texts if any(e['text'] == term for e in elements)]
         missing_terms = [term for term in search_texts if term not in found_terms]
         
         if found_terms:
-            self.print_func("\nFound terms:")
+            self.logger.debug("\nFound terms:")
             for term in found_terms:
-                self.print_func(f"  - {term}")
-                
+                self.logger.debug(f"  - {term}")
+        
         if missing_terms:
-            self.print_func("\nMissing terms:")
+            self.logger.debug("\nMissing terms:")
             for term in missing_terms:
-                self.print_func(f"  - {term}")
+                self.logger.debug(f"  - {term}")
         
         return []
 
@@ -753,9 +751,9 @@ class ApplescriptSafari(API_Call):
             # print(f"Result.code: {result.code}")
             # print(f"Result.out: {result.out}")
             if result.code != 0:
-                self.print_func(f"Error closing Safari tab: {result.err}")
+                self.logger.error(f"Error closing Safari tab: {result.err}")
         except Exception as e:
-            self.print_func(f"Error executing AppleScript to close tab: {str(e)}")
+            self.logger.error(f"Error executing AppleScript to close tab: {str(e)}")
 
     def _close_all_safari_tabs(self) -> None:
         """
@@ -788,14 +786,13 @@ class ApplescriptSafari(API_Call):
             # print(f"Result.code: {result.code}")
             # print(f"Result.out: {result.out}")
             if result.code != 0:
-                self.print_func(f"Error closing Safari tab: {result.err}")
+                self.logger.error(f"Error closing Safari tab: {result.err}")
         except Exception as e:
-            self.print_func(f"Error executing AppleScript to close tab: {str(e)}")
+            self.logger.error(f"Error executing AppleScript to close tab: {str(e)}")
 
 def get_escaped_js_for_text_search_v3(
     search_text: str,
     query_selector: str = "*",
-    print_func: Optional[Callable] = None,
     click: bool = False,
     get_container_table: bool = False
 ) -> str:
@@ -813,8 +810,7 @@ def get_escaped_js_for_text_search_v3(
         search_text (str): The text to search for within elements
         query_selector (str, optional): CSS query selector to narrow down the search scope.
             Defaults to "*" to search all elements.
-        print_func (Optional[Callable], optional): Function to use for printing debug information.
-            Defaults to None.
+
         click (bool, optional): If True, clicks the first matching element. Defaults to False.
         get_container_table (bool, optional): If True, includes container table information in results.
             Defaults to False.
@@ -823,13 +819,12 @@ def get_escaped_js_for_text_search_v3(
         str: Escaped JavaScript code ready to be used in AppleScript
     """
     search_text = unicodedata.normalize("NFKC", search_text).strip()
-    print_func = print_func or _print_if_verbose
-    print_func(f"get_escaped_js_for_text_search_v3 Searching for text: {search_text}")
-    print_func(f"Using query selector: {query_selector}")
+    logger.debug(f"get_escaped_js_for_text_search_v3 Searching for text: {search_text}")
+    logger.debug(f"Using query selector: {query_selector}")
     if click:
-        print_func("Click functionality enabled")
+        logger.debug("Click functionality enabled")
     if get_container_table:
-        print_func("get_container_table functionality enabled")
+        logger.debug("get_container_table functionality enabled")
     
     js_code = f'''
     (function() {{

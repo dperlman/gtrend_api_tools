@@ -13,10 +13,23 @@ import appdirs
 import shutil
 import importlib.resources
 from pathlib import Path
+from loguru import logger
+
+# EMERGENCY DEBUGGING: Uncomment the following lines to enable TRACE level logging
+# for debugging config loading issues. This will show all the TRACE level calls
+# in load_config() that are normally filtered out.
+# logger.remove()
+# logger.add(sys.stderr, level="TRACE")
 
 GRANULARITY_RULES_NAME = 'granularity_rules.yaml'
 DEFAULT_CONFIG_NAME = 'default_config.yaml'
 
+# Global config cache
+_CONFIG = None
+
+# This is here to remind us that we are actually doing this below, after defining load_config()
+# _CONFIG = load_config()
+# DEFAULT_MAX_WORKERS = _CONFIG.get('api_parameters', {}).get('all', {}).get('default_max_workers', 10)
 
 def load_config() -> dict:
     """
@@ -37,62 +50,72 @@ def load_config() -> dict:
     Raises:
         FileNotFoundError: If no config file is found in any of the expected locations
     """
-    _print_if_verbose("\n=== Config Loading Debug ===")
+    global _CONFIG
+    
+    # Return cached config if available
+    if _CONFIG is not None:
+        return _CONFIG
+    
+    logger.trace("=== Config Loading Debug ===")
     # Get user config directory
     config_dir = appdirs.user_config_dir('gtrend_api_tools')
     user_config_path = os.path.join(config_dir, 'config.yaml')
-    _print_if_verbose(f"User config path: {user_config_path}")
+    logger.trace(f"User config path: {user_config_path}")
     
     # Create user config directory if it doesn't exist
     os.makedirs(config_dir, exist_ok=True)
     
     # If user config doesn't exist or is empty, copy from package default
     if not os.path.exists(user_config_path) or os.path.getsize(user_config_path) == 0:
-        _print_if_verbose("User config doesn't exist or is empty, copying from package default")
+        logger.trace("User config doesn't exist or is empty, copying from package default")
         try:
             # Get the path to the default config file
             default_config_path = importlib.resources.files('gtrend_api_tools.config').joinpath(DEFAULT_CONFIG_NAME)
-            _print_if_verbose(f"Default config path: {default_config_path}")
+            logger.trace(f"Default config path: {default_config_path}")
             
             # Direct file copy
             import shutil
             shutil.copy2(default_config_path, user_config_path)
-            _print_if_verbose(f"Copied default config to {user_config_path}")
+            logger.trace(f"Copied default config to {user_config_path}")
             
         except Exception as e:
-            _print_if_verbose(f"Error copying default config: {e}")
+            logger.trace(f"Error copying default config: {e}")
             raise FileNotFoundError(
                 f"Failed to copy default config to user config directory: {e}\n"
                 f"User config path: {user_config_path}"
             )
     
     # Load user config
-    _print_if_verbose("\nLoading user config...")
+    logger.trace("Loading user config...")
     with open(user_config_path, 'r') as f:
         config = yaml.safe_load(f)
-    _print_if_verbose("User config contents:")
-    _print_if_verbose(yaml.dump(config))
+    logger.trace("User config contents:")
+    logger.trace(yaml.dump(config))
     
     # Load granularity rules from package config
     try:
-        _print_if_verbose("\nLoading granularity rules...")
+        logger.trace("Loading granularity rules...")
         rules_path = importlib.resources.files('gtrend_api_tools.config').joinpath(GRANULARITY_RULES_NAME)
         with open(rules_path, 'r') as f:
             rules_config = yaml.safe_load(f)
             if rules_config and 'granularity_rules' in rules_config:
                 config['granularity_rules'] = rules_config['granularity_rules']
-                _print_if_verbose("Successfully loaded granularity rules")
+                logger.trace("Successfully loaded granularity rules")
             if rules_config and 'api_granularity_overrides' in rules_config:
                 config['api_granularity_overrides'] = rules_config['api_granularity_overrides']
-                _print_if_verbose("Successfully loaded api granularity overrides")
+                logger.trace("Successfully loaded api granularity overrides")
     except Exception as e:
-        _print_if_verbose(f"Warning: Failed to load granularity rules: {e}")
+        logger.trace(f"Failed to load granularity rules: {e}")
     
-    _print_if_verbose("\nFinal config contents:")
-    _print_if_verbose(yaml.dump(config))
-    _print_if_verbose("=== End Config Loading Debug ===\n")
+    logger.trace("Final config contents:")
+    logger.trace(yaml.dump(config))
+    logger.trace("=== End Config Loading Debug ===")
+    
+    # Cache the config
+    _CONFIG = config
     
     return config
+
 
 def _print_if_verbose(message: str, verbose: bool = False) -> None:
     """
@@ -136,12 +159,10 @@ def _print_if_verbose(message: str, verbose: bool = False) -> None:
         # Print the message
         print(message)
 
-
 # Load config once at module level and extract common values.
 # (We do this here instead of at the top because we need to define two functions first.)
-_CONFIG = load_config()
-DEFAULT_MAX_WORKERS = _CONFIG.get('api_parameters', {}).get('all', {}).get('default_max_workers', 10)
-
+# _CONFIG = load_config()
+# DEFAULT_MAX_WORKERS = _CONFIG.get('api_parameters', {}).get('all', {}).get('default_max_workers', 10)
 
 
 def _custom_mode(df: pd.DataFrame, axis: int = 1) -> pd.Series:
@@ -155,10 +176,13 @@ def _custom_mode(df: pd.DataFrame, axis: int = 1) -> pd.Series:
     Returns:
         pd.Series: Series containing mode values (or mean of modes if multiple exist)
     """
+    logger.trace(f"Calculating custom mode for DataFrame shape {df.shape}, axis={axis}")
     # Get modes using pandas mode()
     modes = df.mode(axis=axis)
     # Calculate mean of modes along the same axis
-    return modes.mean(axis=axis)
+    result = modes.mean(axis=axis)
+    logger.trace(f"Custom mode calculation complete, result shape: {result.shape}")
+    return result
 
 def _numbered_file_name(orig_name: str, n_digits: int = 3, path: Optional[str] = None) -> str:
     """
@@ -174,6 +198,7 @@ def _numbered_file_name(orig_name: str, n_digits: int = 3, path: Optional[str] =
     Returns:
         str: New filename with the next available number
     """
+    logger.trace(f"Generating numbered filename for '{orig_name}', n_digits={n_digits}, path={path}")
     # Split the filename into base name and extension
     base_name, ext = os.path.splitext(orig_name)
     
@@ -202,14 +227,15 @@ def _numbered_file_name(orig_name: str, n_digits: int = 3, path: Optional[str] =
     
     if path:
         new_name = os.path.join(path, new_name)
+    
+    logger.trace(f"Generated numbered filename: '{new_name}' (next_number={next_number})")
     return new_name
 
 def save_to_csv(
     combined_df: pd.DataFrame,
     search_term: str,
     path: Optional[str] = None,
-    comment: Optional[str] = None,
-    verbose: bool = False
+    comment: Optional[str] = None
 ) -> str:
     """
     Save the dataframe to a CSV file.
@@ -219,11 +245,12 @@ def save_to_csv(
         search_term (str): The search term used to generate the data
         path (Optional[str]): Directory path to save the file. Defaults to None (current directory)
         comment (Optional[str]): Comment to add at the top of the file. Defaults to None
-        verbose (bool): Whether to print debug information
         
     Returns:
         str: The filename that was created
     """
+    logger.info(f"Saving DataFrame to CSV: shape={combined_df.shape}, search_term='{search_term}', path={path}")
+    
     # Create a filename with the search term and current ISO date
     current_date = datetime.now().strftime("%Y-%m-%d")
     formatted_utc_gmtime = time.strftime("%Y-%m-%dT%H-%MUTC", time.gmtime())
@@ -237,12 +264,13 @@ def save_to_csv(
     
     # First write the comment if provided
     if comment:
+        logger.debug(f"Adding comment to CSV file: {comment}")
         with open(filename, 'w') as f:
             f.write(f"# {comment}\n")
     
     # Save the dataframe to the CSV file
     combined_df.to_csv(filename, index=True, mode='a')
-    _print_if_verbose(f"\nData saved to {filename}", verbose)
+    logger.info(f"Data successfully saved to {filename}")
     return filename
 
 def _get_total_size(obj: Any, seen: Optional[set] = None) -> int:
@@ -256,6 +284,7 @@ def _get_total_size(obj: Any, seen: Optional[set] = None) -> int:
     Returns:
         int: Total size in bytes
     """
+    logger.trace(f"Calculating total size for object type {type(obj).__name__}")
     if seen is None:
         seen = set()
         
@@ -279,23 +308,36 @@ def _get_total_size(obj: Any, seen: Optional[set] = None) -> int:
         # Handle pandas/numpy objects that have items() method
         size += sum(_get_total_size(v, seen) + _get_total_size(k, seen) 
                    for k, v in obj.items())
-        
+    
+    logger.trace(f"Total size for {type(obj).__name__}: {size} bytes")
     return size
 
 
 def diff_month(d1: datetime, d2: datetime) -> int:
+    logger.trace(f"Calculating month difference: {d1} to {d2}")
     d2m = d2.replace(day=1) # replace the day of the month with the first day of the month
     d1m = d1.replace(day=1) # replace the day of the month with the first day of the month
-    return (d2m.year - d1m.year) * 12 + d2m.month - d1m.month
+    result = (d2m.year - d1m.year) * 12 + d2m.month - d1m.month
+    logger.trace(f"Month difference result: {result}")
+    return result
 
 def diff_week(d1: datetime, d2: datetime) -> int:
-    return ((d2-d1).days // 7) # need to test to see if this is correct
+    logger.trace(f"Calculating week difference: {d1} to {d2}")
+    result = ((d2-d1).days // 7) # need to test to see if this is correct
+    logger.trace(f"Week difference result: {result}")
+    return result
 
 def diff_day(d1: datetime, d2: datetime) -> int:
-    return (d2-d1).days
+    logger.trace(f"Calculating day difference: {d1} to {d2}")
+    result = (d2-d1).days
+    logger.trace(f"Day difference result: {result}")
+    return result
 
 def diff_hour(d1: datetime, d2: datetime) -> int:
-    return ((d2-d1).total_seconds() // 3600)
+    logger.trace(f"Calculating hour difference: {d1} to {d2}")
+    result = ((d2-d1).total_seconds() // 3600)
+    logger.trace(f"Hour difference result: {result}")
+    return result
 
 def period_index_range_info(period_index: pd.PeriodIndex) -> dict:
     """
@@ -307,13 +349,16 @@ def period_index_range_info(period_index: pd.PeriodIndex) -> dict:
     Returns:
         timedelta: The duration of the period index.
     """
+    logger.trace(f"Calculating period index range info: length={len(period_index)}, freq={period_index.freq}")
     temp_period_index = period_index.union([period_index[-1] + 1])
     start_dt = temp_period_index[0].start_time
     end_dt = temp_period_index[-1].start_time
     duration = end_dt - start_dt
     num_periods = len(period_index)
     mean_period_duration = duration / num_periods
-    return {'start_dt': start_dt, 'end_dt': end_dt, 'duration': duration, 'num_periods': num_periods, 'mean_period_duration': mean_period_duration}
+    result = {'start_dt': start_dt, 'end_dt': end_dt, 'duration': duration, 'num_periods': num_periods, 'mean_period_duration': mean_period_duration}
+    logger.trace(f"Period index range info: {result}")
+    return result
 
 def datetime_index_range_info(datetime_index: pd.DatetimeIndex) -> dict:
     """
@@ -323,314 +368,122 @@ def datetime_index_range_info(datetime_index: pd.DatetimeIndex) -> dict:
     Returns:
         timedelta: The duration of the datetime index.
     """
+    logger.trace(f"Calculating datetime index range info: length={len(datetime_index)}, freq={datetime_index.freq}")
     temp_datetime_index = datetime_index.union([datetime_index[-1] + 1])
     start_dt = temp_datetime_index[0]
     end_dt = temp_datetime_index[-1]
     duration = end_dt - start_dt
     num_periods = len(datetime_index)
     mean_period_duration = duration / num_periods
-    return {'start_dt': start_dt, 'end_dt': end_dt, 'duration': duration, 'num_periods': num_periods, 'mean_period_duration': mean_period_duration}
+    result = {'start_dt': start_dt, 'end_dt': end_dt, 'duration': duration, 'num_periods': num_periods, 'mean_period_duration': mean_period_duration}
+    logger.trace(f"Datetime index range info: {result}")
+    return result
 
 
-# def make_time_range(
-#     start_date: Optional[Union[str, datetime]] = None,
-#     end_date: Optional[Union[str, datetime]] = None
-# ) -> SimpleNamespace:
-#     """
-#     Convert start_date and end_date into a formatted time range string.
-#     If dates are strings, they will be parsed into datetime objects.
-#     If no dates are provided, defaults to the last 270 days.
-#     The output format will be "YYYY-MM-DD YYYY-MM-DD".
+def get_module_logger(file_path):
+    """Get a logger for a specific module"""
+    # Extract just the module name (without path and extension)
+    module_name = os.path.splitext(os.path.basename(file_path))[0]
+    logger.trace(f"Creating module logger for '{module_name}' from file '{file_path}'")
+    return logger.bind(name=module_name)
+
+def setup_logging(config):
+    """Configure logging based on config settings"""
+    # Remove default handler
+    logger.remove()
     
-#     Args:
-#         start_date (Optional[Union[str, datetime]]): Start date. If string, will be parsed with dateutil.parser
-#         end_date (Optional[Union[str, datetime]]): End date. If string, will be parsed with dateutil.parser
+    # Get format from config - if null or not specified, use None to get Loguru's default format with colors
+    log_format = config["logging"].get("format")
+    
+    # Add main handler with default level
+    main_level = config["logging"]["level"]
+    main_handler_kwargs = {
+        "sink": sys.stderr,
+        "level": main_level,
+        "colorize": True
+    }
+    if log_format is not None:
+        main_handler_kwargs["format"] = log_format
+    logger.add(**main_handler_kwargs)
+    
+    # Add file handler if specified
+    if "file" in config["logging"]["handlers"]:
+        # Determine log file path
+        log_config = config["logging"].get("file", {})
+        log_path = log_config.get("path")
         
-#     Returns:
-#         SimpleNamespace: Object containing:
-#             - ymd: Time range string in format "YYYY-MM-DD YYYY-MM-DD"
-#             - mdy: Time range string in format "MM/DD/YYYY MM/DD/YYYY"
-#             - start_datetime: Start date as datetime object
-#             - end_datetime: End date as datetime object
-#     """
-#     # If no dates provided, default to last 270 days
-#     if not start_date and not end_date:
-#         end_date = datetime.now()
-#         start_date = end_date - timedelta(days=270)
-
-#     # default datetime object for parser is january 1 of this year and has hour zero
-#     default_datetime = datetime(2025, 1, 1, 0, 0, 0)
-
-#     # Parse string dates into datetime objects
-#     if isinstance(start_date, str):
-#         start_date = parse(start_date, default=default_datetime)
-#     if isinstance(end_date, str):
-#         end_date = parse(end_date, default=default_datetime)
+        if log_path is None:
+            # Use appdirs to get the default log directory
+            config_dir = appdirs.user_config_dir('gtrend_api_tools')
+            log_dir = os.path.join(config_dir, 'logs')
+            os.makedirs(log_dir, exist_ok=True)
+            log_path = os.path.join(log_dir, 'gtrend_api_tools.log')
+        else:
+            # Use the explicitly specified path
+            log_dir = os.path.dirname(log_path)
+            if log_dir:  # If path includes directory
+                os.makedirs(log_dir, exist_ok=True)
         
-#     # Format dates as YYYY-MM-DD
-#     start_str_ymd = start_date.strftime("%Y-%m-%d") if start_date else ""
-#     end_str_ymd = end_date.strftime("%Y-%m-%d") if end_date else ""
-    
-#     # Format dates as MM/DD/YYYY
-#     start_str_mdy = start_date.strftime("%m/%d/%Y") if start_date else ""
-#     end_str_mdy = end_date.strftime("%m/%d/%Y") if end_date else ""
-    
-#     # Combine into time range strings
-#     time_range_ymd = f"{start_str_ymd} {end_str_ymd}".strip()
-#     time_range_mdy = f"{start_str_mdy} {end_str_mdy}".strip()
-    
-#     return {
-#         "ymd": time_range_ymd,
-#         "mdy": time_range_mdy,
-#         "start_datetime": start_date,
-#         "end_datetime": end_date
-#     }
-
-# def standard_dict_to_df(standardized_data: List[Dict[str, Any]]) -> pd.DataFrame:
-#     """
-#     Convert standardized dictionary format to a pandas DataFrame.
-    
-#     Args:
-#         standardized_data (List[Dict[str, Any]]): List of dictionaries in standardized format,
-#             where each dict has 'date' and 'values' keys. The 'values' key contains a list of
-#             dicts with 'query' and 'value' keys.
+        # Add file handler with optional rotation
+        file_kwargs = {
+            "sink": log_path,
+            "level": config["logging"]["level"]
+        }
+        if log_format is not None:
+            file_kwargs["format"] = log_format
+        
+        # Capture rotation and retention settings
+        rotation_setting = log_config.get("max_size")
+        retention_setting = log_config.get("retention")
+        
+        # Add rotation if specified
+        if rotation_setting:
+            file_kwargs["rotation"] = rotation_setting
+        if retention_setting:
+            file_kwargs["retention"] = retention_setting
             
-#     Returns:
-#         pd.DataFrame: DataFrame with dates as PeriodIndex and one column per search term.
-#             Column names are sanitized versions of the search terms.
-#     """
-#     # Create a dictionary to store the data
-#     data_dict = {}
+        logger.add(**file_kwargs)
     
-#     # Process each entry in the standardized data
-#     for entry in standardized_data:
-#         date = entry['date']
-#         for value_dict in entry['values']:
-#             query = value_dict['query']
-#             value = value_dict['value']
+    # Configure module-specific levels and formats using filters
+    modules_config = config["logging"].get("modules", {})
+    module_handlers_added = 0
+    for module, module_config in modules_config.items():
+        module_level = module_config.get("level")
+        module_format = module_config.get("format")
+        
+        # Only add module-specific handler if level or format is specified
+        if module_level is not None or module_format is not None:
+            # Use module-specific values or fall back to defaults
+            handler_level = module_level if module_level is not None else config["logging"]["level"]
+            handler_format = module_format if module_format is not None else log_format
             
-#             # Sanitize the query name for use as a column name
-#             sanitized_query = query.replace(' ', '_').lower()
+            module_handler_kwargs = {
+                "sink": sys.stderr,
+                "level": handler_level,
+                "filter": lambda record: record["name"] == module,
+                "colorize": True
+            }
+            if handler_format is not None:
+                module_handler_kwargs["format"] = handler_format
             
-#             # Add the value to the data dictionary
-#             if sanitized_query not in data_dict:
-#                 data_dict[sanitized_query] = {}
-#             data_dict[sanitized_query][date] = value
+            logger.add(**module_handler_kwargs)
+            module_handlers_added += 1
     
-#     # Create DataFrame from the dictionary
-#     df = pd.DataFrame(data_dict)
+    # Log setup completion at debug level
+    logger.debug(f"Logging setup complete: {module_handlers_added} module-specific handlers added")
     
-#     # Convert index to datetime first, then to period
-#     df.index = pd.to_datetime(df.index)
-    
-#     # Determine the appropriate frequency for the PeriodIndex
-#     # Get the time differences between consecutive dates
-#     time_diffs = df.index.to_series().diff()
-    
-#     # If all differences are 1 day, use daily frequency
-#     if (time_diffs == pd.Timedelta(days=1)).all():
-#         freq = 'D'
-#     # If all differences are 1 week, use weekly frequency
-#     elif (time_diffs == pd.Timedelta(weeks=1)).all():
-#         freq = 'W'
-#     # If all dates are the first of the month, use monthly frequency
-#     elif (df.index.day == 1).all():
-#         freq = 'MS'
-#     # If all differences are 1 hour, use hourly frequency
-#     elif (time_diffs == pd.Timedelta(hours=1)).all():
-#         freq = 'h'
-#     else:
-#         # Default to daily frequency if we can't determine
-#         freq = 'D'
-    
-#     # Convert to PeriodIndex
-#     df.index = df.index.to_period(freq)
-    
-#     # Sort by date
-#     df = df.sort_index()
-    
-#     return df
+    # Log file settings if file logging was enabled
+    if "file" in config["logging"]["handlers"]:
+        logger.debug(f"File logging settings: rotation={rotation_setting}, retention={retention_setting}")
 
+# Set up logging for the module automatically when utils is imported
+def _auto_setup_logging():
+    """Automatically set up logging when utils module is imported."""
+    config = load_config()  # This won't have logging calls anymore
+    setup_logging(config)
 
+# Run the setup
+_auto_setup_logging()
 
-# def get_index_granularity(index: Union[pd.DatetimeIndex, pd.PeriodIndex], verbose: bool = False) -> str:
-#     """
-#     Determine the granularity of a pandas DateTimeIndex or PeriodIndex.
-    
-#     Args:
-#         index (Union[pd.DatetimeIndex, pd.PeriodIndex]): The index to analyze
-#         verbose (bool): Whether to print debug information
-        
-#     Returns:
-#         str: The granularity code ('h' for hour, 'D' for day, 'W' for week, 'ME' for month end)
-#     """
-#     # Handle empty DataFrame or invalid index type
-#     if len(index) == 0 or not isinstance(index, (pd.DatetimeIndex, pd.PeriodIndex)):
-#         return 'D'  # Default to daily granularity
-        
-#     # First try to get the frequency directly
-#     if index.freq is not None:
-#         freq_str = str(index.freq)
-#         if freq_str.startswith('h'):
-#             return 'h'
-#         elif freq_str.startswith('D'):
-#             return 'D'
-#         elif freq_str.startswith('W'):
-#             return 'W'
-#         elif freq_str.startswith('M'):
-#             return 'M'
-#     # If no frequency is set, try to infer from time differences
-#     if len(index) < 2:
-#         return 'D'  # Default to day if we can't determine
-    
-#     # Convert PeriodIndex to DatetimeIndex if needed
-#     if isinstance(index, pd.PeriodIndex):
-#         index = index.to_timestamp()
-    
-#     # Calculate time differences in nanoseconds
-#     time_diffs = np.diff(index.astype(np.int64))
-    
-#     # Print debugging information
-#     _print_if_verbose("Unique time differences and their counts:", verbose)
-#     _print_if_verbose(pd.Series(time_diffs).value_counts(), verbose)
-    
-#     # Use pandas value_counts instead of np.bincount for memory efficiency
-#     most_common_diff = pd.Series(time_diffs).value_counts().index[0]
-#     _print_if_verbose(f"\nMost common difference: {most_common_diff} nanoseconds", verbose)
-    
-#     # Convert to timedelta and check
-#     td = pd.Timedelta(most_common_diff, unit='ns')
-#     _print_if_verbose(f"Converted to timedelta: {td}", verbose)
-    
-#     if td <= pd.Timedelta(hours=1):
-#         return 'h'
-#     elif td <= pd.Timedelta(days=1):
-#         return 'D'
-#     elif td <= pd.Timedelta(weeks=1):
-#         return 'W'
-#     else:
-#         return 'ME'
-
-# def calculate_search_granularity(
-#     start_date: Union[str, datetime],
-#     end_date: Union[str, datetime],
-#     config: Optional[Dict[str, Any]] = None,
-#     verbose: bool = False
-# ) -> Dict[str, Union[str, pd.DatetimeIndex, pd.PeriodIndex, int]]:
-#     """
-#     Calculate the appropriate granularity for a Google Trends search based on the time range
-#     and generate the corresponding DateTimeIndex and PeriodIndex.
-
-#     This takes start_date and end_date, truncates any HH:MM:SS, and then calculates the granularity based on the time range.
-
-#     Note: Although Google Trends allows (secretly, behind the scenes) for dates to be specified with hours for very short time ranges,
-#     we don't use this because it's not documented and it's not clear if it's reliable. We had to draw the line somewhere.
-    
-#     Args:
-#         start_date (Union[str, datetime]): Start date of the search
-#         end_date (Union[str, datetime]): End date of the search
-#         config (Optional[Dict[str, Any]]): Configuration dictionary containing granularity rules
-#         verbose (bool): Whether to print debug information
-        
-#     Returns:
-#         Dict[str, Union[str, pd.DatetimeIndex, pd.PeriodIndex, int]]: Dictionary containing:
-#             - "granularity": The appropriate granularity to use ("h" for hour, "D" for day, "W" for week, or "MS" for month start)
-#             - "datetime_index": A pandas DateTimeIndex with the appropriate frequency
-#             - "period_index": A pandas PeriodIndex with the appropriate frequency
-#             - "max_units": The maximum number of units possible for the calculated granularity
-#     """
-#     # Get granularity rules from config or use defaults
-#     default_rules = [
-#         {'name': 'hourly', 'max_days': 8, 'max_inclusive': False, 'code': 'h'},
-#         {'name': 'daily', 'max_days': 270, 'max_inclusive': False, 'code': 'D'},
-#         {'name': 'weekly', 'max_days': 1900, 'max_inclusive': False, 'code': 'W'},
-#         {'name': 'monthly', 'code': 'MS'}
-#     ]
-    
-#     # Load config if not provided
-#     if config is None:
-#         config = load_config()
-#     verbose = True
-#     # Get granularity rules from config or use defaults
-#     granularity_rules = config.get('granularity_rules', default_rules) if config else default_rules
-    
-#     # Convert dates to datetime if they're strings
-#     if isinstance(start_date, str):
-#         start_dt = datetime.strptime(start_date, "%Y-%m-%d")
-#     else:
-#         start_dt = start_date
-        
-#     if isinstance(end_date, str):
-#         end_dt = datetime.strptime(end_date, "%Y-%m-%d")
-#     else:
-#         end_dt = end_date
-    
-#     # Truncate any HH:MM:SS
-#     start_dt = start_dt.replace(hour=0, minute=0, second=0, microsecond=0)
-#     end_dt = end_dt.replace(hour=0, minute=0, second=0, microsecond=0)
-    
-#     # Calculate the time range in days
-#     days_diff = (end_dt - start_dt).days
-    
-#     # Determine granularity based on rules in order
-#     for rule in granularity_rules:
-#         if 'max_days' in rule:
-#             if rule['max_inclusive']:
-#                 if days_diff <= rule['max_days']:
-#                     granularity = rule['code']
-#                     max_units = rule['max_days']
-#                     break
-#             else:
-#                 if days_diff < rule['max_days']:
-#                     granularity = rule['code']
-#                     max_units = rule['max_days']
-#                     break
-#         else:
-#             # Last rule (monthly) has no max_days
-#             granularity = rule['code']
-#             max_units = None  # No limit for monthly
-#             break
-    
-#     # if granularity is monthly, we need to calculate the number of months between start and end dates
-#     # first replace the day of the month with the first day of the month
-
-    
-#     if granularity == 'h':
-#         hour_diff = diff_hour(start_dt, end_dt)
-#         _print_if_verbose(f"Hours difference: {hour_diff}", verbose)
-#         datetime_index = pd.date_range(start=start_dt, freq=granularity, periods=hour_diff + 1)
-#         period_index = pd.PeriodIndex(datetime_index)
-#     elif granularity == 'D':
-#         days_diff = diff_day(start_dt, end_dt)
-#         _print_if_verbose(f"Days difference: {days_diff}", verbose)
-#         datetime_index = pd.date_range(start=start_dt, freq=granularity, periods=days_diff + 1)
-#         period_index = pd.PeriodIndex(datetime_index)
-#     elif granularity == 'W':
-#         weeks_diff = diff_week(start_dt, end_dt)
-#         _print_if_verbose(f"Weeks difference: {weeks_diff}", verbose)
-#         datetime_index = pd.date_range(start=start_dt, freq=granularity, periods=weeks_diff + 1)
-#         period_index = pd.PeriodIndex(datetime_index)
-#     elif granularity == 'MS':
-#         months_diff = diff_month(start_dt, end_dt)
-#         _print_if_verbose(f"Months difference: {months_diff}", verbose)
-#         datetime_index = pd.date_range(start=start_dt.replace(day=1), freq=granularity, periods=months_diff + 1)
-#         period_index = pd.PeriodIndex(datetime_index, freq='M')
-#     # Create DateTimeIndex with appropriate frequency, ensuring both start and end dates are included
-#     #datetime_index = pd.date_range(start=start_dt, freq=granularity, periods=days_diff + 1)
-#     _print_if_verbose(f"Datetime index length: {len(datetime_index)}", verbose)
-#     _print_if_verbose(f"Period index length: {len(period_index)}", verbose)
-    
-#     # Create PeriodIndex with appropriate frequency
-#     #period_index = pd.period_range(start=start_dt, end=end_dt, freq=granularity)
-    
-#     if verbose:
-#         _print_if_verbose(f"Granularity for date range {start_dt.strftime('%Y-%m-%d')} to {end_dt.strftime('%Y-%m-%d')} ({days_diff} days) is {granularity}", verbose)
-#         _print_if_verbose(f"Created {len(datetime_index)} datetime periods and {len(period_index)} period indices", verbose)
-#         _print_if_verbose(f"Maximum units for {granularity} granularity: {max_units if max_units is not None else '[no limit]'}", verbose)
-    
-#     return {
-#         "granularity": granularity,
-#         "datetime_index": datetime_index,
-#         "period_index": period_index,
-#         "max_units": max_units
-#     }
+# Get module logger for utils.py itself
+logger = get_module_logger(__file__)

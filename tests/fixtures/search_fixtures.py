@@ -151,9 +151,10 @@ granularity_test_dict = {
     },
     
     # Hourly granularity tests
+    # Serpapi was wrong but they fixed it when I reported it. Leaving this here for reference.
     'serpapi_hourly_max': {
         'start': "2020-01-01 00:00:00",
-        'end': "2020-01-07 23:00:00",  # 7 days 23 hours (191 hours) - max for hourly
+        'end': "2020-01-07 23:00:00",  # 6 days 23 hours (167 hours) - max for hourly
         'granularity': 'h',
         'expected_rows': 168 # 167 hours + 1 for including first and last hours
     },

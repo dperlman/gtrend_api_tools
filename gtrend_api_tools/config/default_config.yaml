@@ -11,6 +11,40 @@ tor:
   control_port: 9151
   proxy_port: 9150
 
+logging:
+  level: INFO
+  #format: "{time:YYYY-MM-DDTHH:mm:ss} | {level: <8} | {name} | {function}:{line} | {message}"
+  format: null # use default format
+  handlers:
+    - console
+    - file
+  file:
+    path: null  # null = use default appdirs location, or specify custom path
+    max_size: "10 MB"  # optional: log rotation
+    retention: "30 days"  # optional: how long to keep logs
+  modules:
+    api_utils:
+      level: null
+      format: null  
+    batch:
+      level: null
+      format: null
+    date_strings:
+      level: null
+      format: null
+    granularity:
+      level: null
+      format: null
+    search_specs:
+      level: null
+      format: null
+    stagger:
+      level: null
+      format: null
+    utils:
+      level: null
+      format: null
+
 api_parameters:
   all:
     max_terms: 5

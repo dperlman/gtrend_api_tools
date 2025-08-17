@@ -7,7 +7,7 @@ from gtrend_api_tools.utils import load_config
 @pytest.fixture
 def granularity_manager(test_config):
     """Fixture providing a GranularityManager instance."""
-    return GranularityManager(test_config, verbose=True)
+    return GranularityManager(test_config)
 
 def test_init_with_config(test_config):
     """Test initialization with provided config."""

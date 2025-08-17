@@ -3,7 +3,8 @@ import sys
 
 from gtrend_api_tools.APIs import SerpApi, Serpwow, TrendsPy, SearchApi, ApplescriptSafari, DummyApi, Brightdata, Decodo
 from datetime import datetime
-from gtrend_api_tools.utils import load_config, _print_if_verbose
+from gtrend_api_tools.utils import load_config
+from gtrend_api_tools.api_utils import get_api_class, api_string
 import json
 import traceback
 
@@ -100,9 +101,9 @@ def main():
     tor_control_password = config.get('tor', {}).get('control_password')
 
     # ranges for testing sub-daily granularity
-    #range_str = "2024-01-01T00 2024-01-01T04" # 4 hours
+    # range_str = "2024-01-01T00 2024-01-01T04" # 4 hours
     # range_str = "2024-01-01T00 2024-01-01T05" # 5 hours
-    range_str = "2024-01-01T00 2024-01-02T11" # 35 hours
+    # range_str = "2024-01-01T00 2024-01-02T11" # 35 hours
     # range_str = "2024-01-01T00 2024-01-02T12" # 36 hours
     # range_str = "2024-01-01T00 2024-01-03T23" # 71 hours
     # range_str = "2024-01-01T00 2024-01-04T00" # 72 hours
@@ -111,14 +112,13 @@ def main():
     # range_str = "2024-01-01T00 2024-01-09T23" # 263 hours
     # range_str = "2024-01-01T00 2024-01-10T00" # 264 hours
     # range_str = "2024-01-01T00 2024-01-11T23" # 335 hours
-    # range_str = "2024-01-01 2024-01-11T23" # 335 hours
     
     # ranges for testing daily granularity
     # range_str = "2024-01-01 2024-01-01" # 1 day
     # range_str = "2024-01-01 2024-01-02" # 2 days
     # range_str = "2024-01-01 2024-01-03" # 3 days
     # range_str = "2024-01-01 2024-01-07" # 7 days
-    # range_str = "2024-01-01 2024-01-08" # 8 days
+    range_str = "2024-01-01 2024-01-08" # 8 days
     # range_str = "2024-01-01 2024-01-09" # 9 days
     # range_str = "2024-01-01 2024-01-10" # 10 days (this one gives 10 output records maybe)
     # range_str = "2024-01-01 2024-01-30" # 30 days
@@ -148,8 +148,8 @@ def main():
     print(f"Start date: {start_date}, End date: {end_date}, Days difference: {days_diff}")
     print(f"{'='*50}")
 
-    print('config api_keys info:')
-    print(config.get('api_keys', {}))
+    #print('config api_keys info:')
+    #print(config.get('api_keys', {}))
 
     apis = [
         #{"name": "SerpApi", "instance": None, "search_term": "coffee,tea"},
@@ -167,9 +167,9 @@ def main():
     # Create API instances
     for api in apis:
         if api["instance"] is None:
-            api_class = globals()[api["name"]]
-            api_key = config.get('api_keys', {}).get(api["name"].lower())
-            if api["name"].lower() == "trendspy":
+            api_class = get_api_class(api_string(api["name"]))
+            api_key = config.get('api_keys', {}).get(api_string(api["name"]))
+            if api_string(api["name"]) == "trendspy":
                 # Add tor_control_password for Trendspy
                 api["instance"] = api_class(api_key=api_key, verbose=verbose, tor_control_password=tor_control_password)
             else:

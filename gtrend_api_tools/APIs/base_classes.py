@@ -3,15 +3,22 @@ from datetime import datetime, timezone, timedelta
 import pandas as pd
 import inspect
 import threading
-from gtrend_api_tools.utils import _print_if_verbose, load_config, DEFAULT_MAX_WORKERS
+from gtrend_api_tools.utils import load_config, get_module_logger
 from gtrend_api_tools.api_utils import standard_dict_to_df, api_string
 from gtrend_api_tools.search_specs import DateRange, SearchSpec
 import requests
 from gtrend_api_tools.granularity import GranularityManager
 
+# Get module logger
+logger = get_module_logger(__file__)
+
 # Type aliases for better readability
-PrintFunction = Callable[[str], None]
 DataConverter = Callable[[Any], Any]
+
+# Temporary while we sort this out.
+DEFAULT_MAX_WORKERS = 10
+
+
 
 class TrendSearchResult:
     """
@@ -31,7 +38,11 @@ class TrendSearchResult:
         raw_data: Optional[Any] = None,
         converter: Optional[DataConverter] = None,
         data: Optional[Any] = None,
-        dataframe: Optional[pd.DataFrame] = None
+        dataframe: Optional[pd.DataFrame] = None,
+        # Added error/status fields on result for a unified interface
+        error: str = "",
+        error_type: str = "",
+        is_error: bool = False,
     ):
         """
         Initialize a TrendSearchResult.
@@ -64,6 +75,10 @@ class TrendSearchResult:
         self.search_spec = search_spec
         self.base_trends_request_url = base_trends_request_url
         self.response = response
+        # Error/status fields stored on the result itself (non-breaking addition)
+        self.error = error
+        self.error_type = error_type
+        self.is_error = is_error
     
     def set_send_timestamp(self) -> None:
         """
@@ -157,6 +172,13 @@ class TrendSearchResult:
     def __repr__(self) -> str:
         """Detailed string representation of the result."""
         return f"TrendSearchResult(raw_data={self.raw_data}, data={self.data}, dataframe={self._dataframe})"
+
+    @property
+    def http_status_code(self) -> Optional[int]:
+        """
+        HTTP status code derived from the underlying response, if present.
+        """
+        return getattr(self.response, 'status_code', None)
 
 
 class TrendSearchErrorStatus:
@@ -275,7 +297,6 @@ class API_Call:
         no_cache: bool = False,
         region: Optional[str] = None,
         verbose: bool = False,
-        print_func: Optional[PrintFunction] = None,
         tor_control_password: Optional[str] = None,
         api_endpoint: Optional[str] = "https://trends.google.com/trends/explore", # put the actual API endpoint for the specific API subclass here
         base_trends_endpoint: Optional[str] = "https://trends.google.com/trends/explore", # leave this the same for reference purposes
@@ -299,8 +320,7 @@ class API_Call:
             tz (int): Timezone offset in minutes. Defaults to 420
             no_cache (bool): Whether to disable caching. Defaults to False
             region (Optional[str]): Region for the search. Defaults to None
-            verbose (bool): Whether to print debug information
-            print_func (Optional[Callable]): Function to use for printing debug information. If None, uses _print_if_verbose
+            verbose (bool): Whether to enable verbose logging
             tor_control_password (Optional[str]): Password for Tor control port. Required if change_identity is True
             api_endpoint (Optional[str]): The API endpoint URL. Defaults to None
             granularity (str): The granularity of the date range. One of: 's' (seconds), 'm' (minutes), 'h' (hourly), 
@@ -339,13 +359,11 @@ class API_Call:
         self._batch_history_index: int = 0
         self._batch_num_results: int = 0
 
-        # Create a closure that captures self.verbose
-        def make_print_func(verbose: bool) -> PrintFunction:
-            def print_with_verbose(message: str) -> None:
-                _print_if_verbose(message, verbose)
-            return print_with_verbose
-
-        self.print_func = print_func if print_func is not None else make_print_func(self.verbose)
+        # Store verbose setting for logging
+        self.verbose = verbose
+        
+        # Set up logger for this instance
+        self.logger = logger
 
         # Store a granularity manager for this API
         # If we are emulating an API, we need to use the API string that is being emulated
@@ -357,7 +375,7 @@ class API_Call:
         self,
         search_spec: Optional[SearchSpec] = None,
         **kwargs
-    ) -> 'API_Call':
+    ) -> TrendSearchResult:
         """
         Execute a single Google Trends search.
         
@@ -366,7 +384,7 @@ class API_Call:
             **kwargs: Arguments passed to SearchSpec constructor (search_term, start_date, end_date, date_range, granularity, verbose)
             
         Returns:
-            API_Call: Returns self for method chaining
+            TrendSearchResult: The search result object.
             
         Raises:
             Exception: If the search fails or returns an error
@@ -375,11 +393,7 @@ class API_Call:
         internal_state = self.make_search_state_container(search_spec, **kwargs)
         self._initialize_history([internal_state])
         self._do_search(internal_state) # this returns the internal state but we don't need it because it's the same object as the one we called with
-        # search_result_list = self._search_result_history[self._batch_history_index:self._batch_history_index+self._batch_num_results]
-        # search_error_list = self._search_error_history[self._batch_history_index:self._batch_history_index+self._batch_num_results]
-        # that's wrong, come back to that
-        
-        return internal_state.search_result, internal_state.search_error
+        return internal_state.search_result
     
 
     def search_batch(
@@ -387,7 +401,7 @@ class API_Call:
         search_spec_list: List[SearchSpec],
         method: str = 'thread',
         max_workers: int = DEFAULT_MAX_WORKERS
-    ) -> Tuple[List[TrendSearchResult], List[TrendSearchErrorStatus]]:
+    ) -> List[TrendSearchResult]:
         """
         Execute multiple Google Trends searches in batch. This should be thread-safe internally.
         This method itself is not thread-safe, but the internal state is.
@@ -416,7 +430,7 @@ class API_Call:
             max_workers (int): Maximum number of worker threads when using 'thread' method. Defaults to 10
             
         Returns:
-            Tuple[List[TrendSearchResult], List[TrendSearchErrorStatus]]: Results and errors from batch execution
+            List[TrendSearchResult]: Results from batch execution
             
         Raises:
             Exception: If any search in the batch fails
@@ -428,8 +442,8 @@ class API_Call:
         self.setup_batch(state_container_list)
         
         # Execute the batch
-        search_result_list, search_error_list = self.execute_batch(state_container_list, method, max_workers)
-        return search_result_list, search_error_list
+        search_result_list = self.execute_batch(state_container_list, method, max_workers)
+        return search_result_list
 
     def make_state_container_list(self, search_spec_list: List[SearchSpec]) -> List[TrendSearchContainer]:
         """
@@ -455,13 +469,16 @@ class API_Call:
         
         # Set up the internal states for each search spec
         # It won't take long to do this because it does not involve any API calls or other IO.
-        #self._batch_internal_state_list = state_container_list # Do we even need this?????
         # This will initialize all the history lists atomically because of the internal locks in the _initialize_history method.
-        #self._initialize_history(self._batch_internal_state_list)
         self._initialize_history(state_container_list)
 
 
-    def execute_batch(self, batch_internal_state_list: List[TrendSearchContainer], method: str = 'thread', max_workers: int = DEFAULT_MAX_WORKERS) -> Tuple[List[TrendSearchResult], List[TrendSearchErrorStatus]]:
+    def execute_batch(
+        self,
+        batch_internal_state_list: List[TrendSearchContainer],
+        method: str = 'thread',
+        max_workers: int = DEFAULT_MAX_WORKERS,
+    ) -> List[TrendSearchResult]:
         """
         Execute the batch search using the prepared internal states.
         
@@ -470,7 +487,7 @@ class API_Call:
             max_workers (int): Maximum number of worker threads when using 'thread' method. Defaults to 10
             
         Returns:
-            Tuple[List[TrendSearchResult], List[TrendSearchErrorStatus]]: Results and errors from batch execution
+            List[TrendSearchResult]: Results from batch execution
         """
         # Do the search
         if method == 'thread':
@@ -488,8 +505,7 @@ class API_Call:
         # This is to make sure that we return the right number of results, in case this instance was already used before this!
         state_list = self._internal_state_history[self._batch_history_index:self._batch_history_index+self._batch_num_results]
         search_result_list = [s.search_result for s in state_list]
-        search_error_list = [s.search_error for s in state_list]
-        return search_result_list, search_error_list
+        return search_result_list
 
 
     def make_search_state_container(
@@ -509,19 +525,19 @@ class API_Call:
             TrendSearchContainer: The internal state for this search
         """
         
-        self.print_func(f"Preparing {self.__class__.__name__} search request:")
+        logger.debug(f"Preparing {self.__class__.__name__} search request:")
         if search_spec is not None and isinstance(search_spec, SearchSpec):
             # We are going to use the provided search_spec but first we will check if it matches our API
             # Check if the provided search_spec's API matches our API
             if self.api_string is not None and hasattr(search_spec, 'api') and search_spec.api != self.api_string:
-                self.print_func(f"Warning: SearchSpec API '{search_spec.api}' doesn't match this API class '{self.api_string}'")
+                logger.warning(f"SearchSpec API '{search_spec.api}' doesn't match this API class '{self.api_string}'")
             # Use provided search_spec directly
             # i.e. search_spec = search_spec
         else:
             # Pass all kwargs to SearchSpec constructor, including the api parameter
             search_kwargs = kwargs.copy()
             if self.api_string is not None:
-                self.print_func(f"Setting search_spec api to {self.api_string}")
+                logger.debug(f"Setting search_spec api to {self.api_string}")
                 search_kwargs['api'] = self.api_string
             # Create a new search_spec with the provided kwargs
             search_spec = SearchSpec(**search_kwargs)
@@ -533,9 +549,9 @@ class API_Call:
         # The idea is that this search method should be atomic and thread-safe, 
         # but we also have the ability to do batch searches.
 
-        self.print_func(f"Search spec: {search_spec}")
-        self.print_func(f"  Search term: {search_spec.term_string}")
-        self.print_func(f"  Search date range: {search_spec.str.search_range_ymd}")
+        logger.debug(f"Search spec: {search_spec}")
+        logger.debug(f"  Search term: {search_spec.term_string}")
+        logger.debug(f"  Search date range: {search_spec.str.search_range_ymd}")
     
         # Make the base trends request
         internal_state.base_trends_request_params = self._base_trends_request_params(internal_state)
@@ -543,25 +559,25 @@ class API_Call:
         internal_state.prepared_base_trends_request = internal_state.base_trends_request.prepare()
         internal_state.base_trends_request_url = internal_state.prepared_base_trends_request.url
         internal_state.search_result.base_trends_request_url = internal_state.base_trends_request_url
-        self.print_func(f"Base trends request URL: {internal_state.base_trends_request_url}")
+        logger.debug(f"Base trends request URL: {internal_state.base_trends_request_url}")
 
         # Only do the API request if we have an API endpoint
         if self.api_endpoint is not None:
             # Set up the API request
             internal_state.request_headers = self._request_headers(internal_state)
-            self.print_func(f"Request headers: {internal_state.request_headers}")
+            logger.debug(f"Request headers: {internal_state.request_headers}")
 
             internal_state.request_params = self._request_params(internal_state)
-            self.print_func(f"Search params: {internal_state.request_params}")
+            logger.debug(f"Search params: {internal_state.request_params}")
             
             internal_state.request_data = self._request_data(internal_state)
-            self.print_func(f"Request data: {internal_state.request_data}")
+            logger.debug(f"Request data: {internal_state.request_data}")
 
             # Prepare the request
             internal_state.request = self._request(internal_state)
             internal_state.prepared_request = internal_state.request.prepare()
             internal_state.request_url = internal_state.prepared_request.url
-            self.print_func(f"API request URL: {internal_state.request_url}")
+            logger.debug(f"API request URL: {internal_state.request_url}")
 
         return internal_state 
 
@@ -581,10 +597,10 @@ class API_Call:
         """
 
         if self.__class__.__name__ == "API_Call":
-            print(f"Base class {self.__class__.__name__} prepares a request directly to Google Trends.")
-            print("We are about to send the request, but it is unlikely this will be useful in any way.")
-            print("Google Trends URL:")
-            print(internal_state.base_trends_request_url)
+            logger.warning(f"Base class {self.__class__.__name__} prepares a request directly to Google Trends.")
+            logger.warning("We are about to send the request, but it is unlikely this will be useful in any way.")
+            logger.warning("Google Trends URL:")
+            logger.warning(internal_state.base_trends_request_url)
 
         # Make the request, tracking timestamps
         internal_state.search_result.set_send_timestamp()
@@ -596,33 +612,43 @@ class API_Call:
         raw_data = response_raw_data['raw_data']
         internal_state.search_result.raw_data = raw_data
         internal_state.search_result.response = response
-        self.print_func(f"  Search successful in {internal_state.search_result.request_duration.total_seconds()} seconds")
+        # Mirror status into the result-level fields
+        internal_state.search_result.is_error = False
+        internal_state.search_result.error = ""
+        internal_state.search_result.error_type = ""
+        logger.debug(f"Search successful in {internal_state.search_result.request_duration.total_seconds()} seconds")
 
         # Update the error status with the HTTP status code no matter what
         current_error_status = internal_state.search_error
-        if hasattr(internal_state, 'response') and hasattr(internal_state.response, 'status_code'):
-            current_error_status.http_status_code = internal_state.response.status_code
-        else:
-            current_error_status.http_status_code = None
+        response_obj = getattr(internal_state.search_result, 'response', None)
+        current_error_status.http_status_code = getattr(response_obj, 'status_code', None)
         internal_state.search_error = current_error_status
         
         # Check if there's an error in the results
         if isinstance(raw_data, dict) and "error" in raw_data:
             error_msg = raw_data["error"]
-            self.print_func(f"{self.__class__.__name__} Search failed: {error_msg}")
+            logger.error(f"{self.__class__.__name__} Search failed: {error_msg}")
             # Update the existing TrendSearchErrorStatus object using the property
             
             current_error_status.error = error_msg
             current_error_status.error_type = "APIError"
             current_error_status.is_error = True
+            # Also set result-level error fields
+            internal_state.search_result.is_error = True
+            internal_state.search_result.error = error_msg
+            internal_state.search_result.error_type = "APIError"
             raise Exception(error_msg)
         
         # Update success status in the existing TrendSearchErrorStatus object using the property
         current_error_status = internal_state.search_error
         current_error_status.is_error = False
+        # Ensure result-level flags are in sync on success
+        internal_state.search_result.is_error = False
+        internal_state.search_result.error = ""
+        internal_state.search_result.error_type = ""
         
         # Print success message
-        self.print_func(f"{self.__class__.__name__} request sent successfully!")
+        logger.info(f"{self.__class__.__name__} request sent successfully!")
         return internal_state
 
 

@@ -6,7 +6,7 @@ from gtrend_api_tools.utils import load_config
 # Import the fixture functions and call them to get the data
 from fixtures.search_fixtures import simple_test_case_list
 
-API_TO_TEST = 'dummy_api'
+API_TO_TEST = 'scrapingdog'
 BATCH_METHOD = "thread"  # options are 'thread' or 'sequential'
 MAX_WORKERS = 10
 
@@ -24,7 +24,7 @@ api_class = get_api_class(API_TO_TEST)
 #     api_instance = api_class(api_key=api_key, verbose=verbose, tor_control_password=tor_control_password)
 # else:
 #     api_instance = api_class(api_key=api_key, verbose=verbose)
-    api_instance = api_class(api_key=api_key, verbose=verbose, tor_control_password=tor_control_password)
+api_instance = api_class(api_key=api_key, verbose=verbose, tor_control_password=tor_control_password)
 
 
 # Create a list of search specifications for the batch
@@ -49,17 +49,18 @@ spec_list = [
     )
 ]
 
-results, errors = api_instance.search_batch(
+results = api_instance.search_batch(
     search_spec_list=spec_list,
     method=BATCH_METHOD,
     max_workers=MAX_WORKERS
 )
 
 # print(results)
-# print(errors)
 
 print(api_instance.internal_state_history)
 #print(api_instance.data)
 #print(api_instance.dataframe)
 
+print(results[0].dataframe)
+print(results[0].dataframe)
 print(results[0].dataframe)

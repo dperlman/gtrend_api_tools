@@ -25,7 +25,6 @@ class DummyApi(API_Call):
         no_cache: bool = False,
         region: Optional[str] = None,
         verbose: bool = False,
-        print_func: Optional[callable] = None,
         tor_control_password: Optional[str] = None,
         api_endpoint: Optional[str] = None,
         fill_value: Union[str, int, float] = "sinc",
@@ -44,7 +43,6 @@ class DummyApi(API_Call):
             no_cache=no_cache,
             region=region,
             verbose=verbose,
-            print_func=print_func,
             tor_control_password=tor_control_password,
             api_endpoint=api_endpoint,
             **kwargs
@@ -122,7 +120,7 @@ class DummyApi(API_Call):
                 }
                 data.append(entry)
         
-        self.print_func("  Dummy data generated successfully!")
+        self.logger.info("Dummy data generated successfully!")
         return {'response': None, 'raw_data': data}
     
     # # Overriding the default method for creating the dataframe to do nothing (pass) as instructed.

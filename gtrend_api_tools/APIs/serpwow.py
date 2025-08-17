@@ -91,7 +91,7 @@ class Serpwow(API_Call):
             }
             data.append(standardized_entry)
         
-        self.print_func(f"Standardized data length: {len(data)}")
+        self.logger.debug(f"Standardized data length: {len(data)}")
         return data
 
     # def standardize_data(self) -> 'Serpwow':
